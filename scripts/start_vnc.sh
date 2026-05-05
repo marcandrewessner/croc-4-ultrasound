@@ -19,6 +19,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # ========================================================================
 
+# MAW: Configure the container
+WEBSERVER_PORT=8888	# NoVNC webviewer on port 8888
+VNC_PW=croclab			# set vnc password
+
+
 if [ -n "${DRY_RUN}" ]; then
 	echo "[INFO] This is a dry run, all commands will be printed to the shell (Commands printed but not executed are marked with $)!"
 	ECHO_IF_DRY_RUN="echo $"
@@ -56,7 +61,7 @@ if [ -z ${DOCKER_TAG+z} ]; then
 fi
 
 if [ -z ${CONTAINER_NAME+z} ]; then
-	CONTAINER_NAME="iic-osic-tools_xvnc_uid_"$(id -u)
+	CONTAINER_NAME="iic-osic-tools_xvnc_crocus_uid_"$(id -u)
 fi
 
 if [[ "$OSTYPE" == "linux"* ]]; then

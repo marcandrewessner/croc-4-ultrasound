@@ -1,0 +1,28 @@
+{
+  name: "adc_acquisition",
+  version: "0.1.0",
+  regwidth: 32,
+  cip_id: 1,
+  clocking: [
+    { clock: "clk_i", reset: "rst_ni", primary: true }
+  ],
+  bus_interfaces: [
+    { protocol: "tlul", direction: "device" }
+  ],
+  registers: [
+    {
+      name: "ADC_AQ_REGA",
+      desc: "here would be a description, maw",
+      swaccess: "rw",
+      hwaccess: "hrw",
+      resval: "0x00ABCDEF",
+      fields: [
+        {
+          bits: "31:0",
+          name: "fullregisterbits",
+          desc: "Full register bits",
+        },
+      ],
+    },
+  ],
+}
