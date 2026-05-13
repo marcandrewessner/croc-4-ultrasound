@@ -1,0 +1,89 @@
+
+// TODOs:
+// define errors; overflows....
+
+
+enum adc_mode_e {
+  IDLE=0;
+  SINGLE_ACQ_F0=10;
+  CONTINUOUS_ACQ_F0_F1=20;
+};
+
+
+addrmap adc_acquisition_reg {
+  desc = "Registers for interfacing with the ADC Acquisition Controller & DMA";
+  default regwidth = 32;
+  
+  /////////////////////////////////////
+  // ctrl & status //
+  /////////////////////////////////////
+
+  reg {
+    name = "Control";
+    desc = "execute commands directly by writing single command bits";
+    
+    field {
+      name="reset_write_head";
+      desc="Resets the write head position back to F0_START_ADDR";
+      sw=w;
+      hw=rw;
+      woset;
+    } RESET_WRITE_HEAD;
+    
+  } CNTRL;
+
+  reg {
+    name="Status";
+    desc="status & config register for adc controller";
+    
+    field {
+      name   = "Acquisition System Mode";
+      desc   = "configure acquisition system mode (idle, running in mode x, ...)";
+      hw     = rw;
+      sw     = rw;
+      encode = adc_mode_e;
+    } STATUS[8] = adc_mode_e::IDLE;
+
+    field fx_full_f {
+      name = "Block Fx Full";
+      desc = "High if the Fx Block was fully written";
+      hw   = w;
+      sw   = rw;
+      woclr;
+    };
+
+    fx_full_f f0_full = 0;
+    fx_full_f f1_full = 0;
+
+  } STATUS;
+
+
+  /////////////////////////////////////
+  // memory addresses for frames //
+  /////////////////////////////////////
+
+  reg {
+    name="Write Head";
+    desc="Pointer to the current memory address the acquisition is writing to, (can be reset using the control reg)";
+    field {
+      name="Pointer";
+      hw = w;
+      sw = r;
+    } pointer[31:0] = 0x00000000;
+  } WRITE_HEAD;
+
+  reg address_config_r {
+    name="Address Configuration";
+    field {
+      name="Address";
+      hw=r;
+      sw=w;
+    } address[31:0] = 0x00000000;
+  };
+
+  address_config_r F0_START_ADDR;
+  address_config_r F0_END_ADDR;
+  address_config_r F1_START_ADDR;
+  address_config_r F1_END_ADDR;
+
+};
