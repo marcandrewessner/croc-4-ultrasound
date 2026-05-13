@@ -29,6 +29,8 @@ module croc_domain import croc_pkg::*; #(
 
   output logic [GpioCount-1:0] gpio_in_sync_o, // synchronized GPIO inputs
 
+  input logic [16:0] adc_signals_i,
+
   /// User OBI interface
   /// User as subordinate (from core to user module)
   /// Address space 0x2000_0000 - 0x8000_0000
@@ -57,6 +59,7 @@ module croc_domain import croc_pkg::*; #(
   logic uart_irq;
   logic gpio_irq;
   logic idma_irq;
+  logic adc_frame_full_irq;
   logic [15:0] interrupts;
   always_comb begin
     interrupts    = '0;
@@ -64,7 +67,8 @@ module croc_domain import croc_pkg::*; #(
     interrupts[1] = uart_irq;
     interrupts[2] = gpio_irq;
     interrupts[3] = idma_irq;
-    interrupts[4+:NumExternalIrqs] = interrupts_i;
+    interrupts[4] = adc_frame_full_irq;
+    interrupts[5+:NumExternalIrqs] = interrupts_i;
   end
 
   // ----------------------------
@@ -97,6 +101,10 @@ module croc_domain import croc_pkg::*; #(
   mgr_obi_req_t idma_obi_write_req;
   mgr_obi_rsp_t idma_obi_write_rsp;
 
+  // ADC Acquisition DMA bus
+  mgr_obi_req_t adc_data_obi_req;
+  mgr_obi_rsp_t adc_data_obi_rsp;
+
   // xbar manager buses
   mgr_obi_req_t [NumXbarManagers-1:0] xbar_mgr_obi_req;
   mgr_obi_rsp_t [NumXbarManagers-1:0] xbar_mgr_obi_rsp;
@@ -113,6 +121,9 @@ module croc_domain import croc_pkg::*; #(
 
   assign xbar_mgr_obi_req[3] = core_instr_obi_req;
   assign core_instr_obi_rsp  = xbar_mgr_obi_rsp[3];
+
+  assign xbar_mgr_obi_req[4] = adc_data_obi_req;
+  assign adc_data_obi_rsp    = xbar_mgr_obi_rsp[4];
 
   // ----------------------------------
   // Subordinate buses out of crossbar
@@ -193,6 +204,10 @@ module croc_domain import croc_pkg::*; #(
   sbr_obi_req_t bootrom_obi_req;
   sbr_obi_rsp_t bootrom_obi_rsp;
 
+  // ADC Acquisition
+  sbr_obi_req_t adc_obi_cfg_req;
+  sbr_obi_rsp_t adc_obi_cfg_rsp;
+
   // Fanout to individual peripherals
   assign error_obi_req                     = all_periph_obi_req[PeriphError];
   assign all_periph_obi_rsp[PeriphError]   = error_obi_rsp;
@@ -212,7 +227,8 @@ module croc_domain import croc_pkg::*; #(
   assign all_periph_obi_rsp[PeriphClint]   = clint_obi_rsp;
   assign bootrom_obi_req                   = all_periph_obi_req[PeriphBootrom];
   assign all_periph_obi_rsp[PeriphBootrom] = bootrom_obi_rsp;
-
+  assign adc_obi_cfg_req                   = all_periph_obi_req[PeriphADCAcq];
+  assign all_periph_obi_rsp[PeriphADCAcq]  = adc_obi_cfg_rsp;
 
   // -----------------
   // Core
@@ -281,11 +297,11 @@ module croc_domain import croc_pkg::*; #(
     );
 
     // IDMA managers going into crossbar
-    assign xbar_mgr_obi_req[4] = idma_obi_write_req;
-    assign idma_obi_write_rsp  = xbar_mgr_obi_rsp[4];
+    assign xbar_mgr_obi_req[5] = idma_obi_write_req;
+    assign idma_obi_write_rsp  = xbar_mgr_obi_rsp[5];
 
-    assign xbar_mgr_obi_req[5] = idma_obi_read_req;
-    assign idma_obi_read_rsp   = xbar_mgr_obi_rsp[5];
+    assign xbar_mgr_obi_req[6] = idma_obi_read_req;
+    assign idma_obi_read_rsp   = xbar_mgr_obi_rsp[6];
 
   end else begin : gen_no_dma
 
@@ -510,6 +526,25 @@ module croc_domain import croc_pkg::*; #(
     .testmode_i,
     .obi_req_i  ( xbar_error_obi_req ),
     .obi_rsp_o  ( xbar_error_obi_rsp )
+  );
+
+  // ----------------
+  // ADC Acquisition
+  // ----------------
+  adc_acquisition_top #(
+    .mgr_obi_req_t,
+    .mgr_obi_rsp_t,
+    .sbr_obi_req_t,
+    .sbr_obi_rsp_t
+  ) i_adc_acquisition_top (
+    .clk_i,
+    .rst_ni,
+    .mgr_obi_req_o          ( adc_data_obi_req ),
+    .mgr_obi_rsp_i          ( adc_data_obi_rsp ),
+    .sbr_obi_req_i          ( adc_obi_cfg_req ),
+    .sbr_obi_rsp_o          ( adc_obi_cfg_rsp ),
+    .interrupt_frame_full_o ( adc_frame_full_irq ),
+    .adc_input_signals      ( adc_signals_i )
   );
 
 

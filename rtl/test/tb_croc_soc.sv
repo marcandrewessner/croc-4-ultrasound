@@ -36,6 +36,12 @@ module tb_croc_soc #(
 
   // Signals controlled by the testbench
 
+  // Signals from the ADC
+  logic        adc_clk_o;
+  logic        adc_rst_no;
+  logic        adc_valid_o;
+  logic [13:0] adc_data_o;
+
   /////////////////////////////
   //  Command Line Arguments //
   /////////////////////////////
@@ -109,7 +115,8 @@ module tb_croc_soc #(
     .uart_tx_o     ( uart_tx     ),
     .gpio_i        ( gpio_in     ),
     .gpio_o        ( gpio_out    ),
-    .gpio_out_en_o ( gpio_out_en )
+    .gpio_out_en_o ( gpio_out_en ),
+    .adc_signals_i ( {adc_clk_o, adc_rst_no, adc_valid_o, adc_data_o} )
   );
 
   /////////////////
@@ -151,6 +158,37 @@ module tb_croc_soc #(
     repeat(50) @(posedge sys_clk);
     $finish();
   end
+
+  //////////////////////////////////
+  //  ADC Simulation  //
+  //////////////////////////////////
+  localparam int ADC_SAMPLING_FREQ_MHZ = 12;
+  initial begin : tb_adc_sim_clock
+    // init the data
+    adc_clk_o = 0;
+    adc_rst_no = 0;
+    // Wait for a random init time,
+    // s.t. we get a non sync adc data
+    #($urandom_range(100, 10000000));
+    adc_rst_no  = 'b1;
+    forever begin
+      adc_clk_o = ~adc_clk_o;
+      #(1000000/2/ADC_SAMPLING_FREQ_MHZ);
+    end
+  end
+  initial begin : tb_adc_sim_data
+    // create the data loop (just a sawtooth wave)
+    adc_data_o  = 'hE00;
+    adc_valid_o = 'b0;
+    @(negedge adc_clk_o);
+    adc_valid_o = 'b1;
+    forever begin
+      // update val at negedge (conform to timing diagram)
+      @(negedge adc_clk_o);
+      adc_data_o = adc_data_o + 1;
+    end
+  end
+
 
   ////////////////
   //  Waveform  //

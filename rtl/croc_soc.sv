@@ -23,9 +23,11 @@ module croc_soc import croc_pkg::*; #(
   input  logic uart_rx_i,
   output logic uart_tx_o,
 
-  input  logic [GpioCount-1:0] gpio_i,       // Input from GPIO pins
-  output logic [GpioCount-1:0] gpio_o,       // Output to GPIO pins
-  output logic [GpioCount-1:0] gpio_out_en_o // Output enable signal; 0 -> input, 1 -> output
+  input  logic [GpioCount-1:0] gpio_i,        // Input from GPIO pins
+  output logic [GpioCount-1:0] gpio_o,        // Output to GPIO pins
+  output logic [GpioCount-1:0] gpio_out_en_o, // Output enable signal; 0 -> input, 1 -> output
+
+  input logic [16:0] adc_signals_i            // Input from the ADCs
 );
 
   logic synced_rst_n;
@@ -73,6 +75,8 @@ croc_domain #(
   .gpio_out_en_o,
 
   .gpio_in_sync_o ( gpio_in_sync ),
+
+  .adc_signals_i,
 
   .user_sbr_obi_req_o  ( user_sbr_obi_req ),
   .user_sbr_obi_rsp_i  ( user_sbr_obi_rsp ),
