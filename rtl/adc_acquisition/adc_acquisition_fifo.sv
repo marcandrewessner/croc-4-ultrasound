@@ -62,16 +62,21 @@ module adc_acquisition_fifo import adc_acquisition_pkg::*; #(
       read_head_d      = '0;
       write_head_d     = '0;
     end else begin
+      // Create the variable for the rec counter
+      int next_rec_data_counter;
+      next_rec_data_counter = rec_data_count_q;
       // Normal operation
       if(write_i && !overflow) begin
-        write_head_d = (write_head_q==BATCH_SIZE*FIFO_BATCH_DEPTH) ? '0 : write_head_q + 1;
+        write_head_d = (write_head_q==BATCH_SIZE*FIFO_BATCH_DEPTH-1) ? '0 : write_head_q + 1;
         fifo_data_d[write_head_q] = data_i;
-        rec_data_count_d = rec_data_count_q + 1;
+        next_rec_data_counter = next_rec_data_counter + 1;
       end
       if(read_i && valid) begin
-        read_head_d = (read_head_q==BATCH_SIZE*FIFO_BATCH_DEPTH) ? '0 : write_head_q + 1;
-        rec_data_count_d = rec_data_count_q - BATCH_SIZE;
+        read_head_d = (read_head_q==BATCH_SIZE*FIFO_BATCH_DEPTH-1*BATCH_SIZE) ? '0 : read_head_q + BATCH_SIZE;
+        next_rec_data_counter = next_rec_data_counter - BATCH_SIZE;
       end
+      // Push the rec_data_counter
+      rec_data_count_d = next_rec_data_counter;
     end
   end
 
