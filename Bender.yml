@@ -34,6 +34,7 @@ sources:
   - rtl/clint/clint_reg_pkg.sv
   - rtl/obi_timer/obi_timer_reg_pkg.sv
   # add your design files containing anything but modules (packages) here
+  - rtl/adc_acquisition/reg/adc_acquisition_reg_pkg.sv
   - rtl/adc_acquisition/adc_acquisition_pkg.sv
 
     # RTL
@@ -54,6 +55,7 @@ sources:
       - rtl/adc_acquisition/adc_acquisition_top.sv
       - rtl/adc_acquisition/adc_acquisition_controller.sv
       - rtl/adc_acquisition/adc_acquisition_fifo.sv
+      - rtl/adc_acquisition/reg/adc_acquisition_reg.sv
       # Level 3
       - rtl/croc_soc.sv
 

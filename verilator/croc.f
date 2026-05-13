@@ -168,6 +168,7 @@
 ../rtl/gpio/gpio_reg_pkg.sv
 ../rtl/clint/clint_reg_pkg.sv
 ../rtl/obi_timer/obi_timer_reg_pkg.sv
+../rtl/adc_acquisition/reg/adc_acquisition_reg_pkg.sv
 ../rtl/adc_acquisition/adc_acquisition_pkg.sv
 ../rtl/core_wrap.sv
 ../rtl/bootrom/bootrom.sv
@@ -181,6 +182,7 @@
 ../rtl/adc_acquisition/adc_acquisition_top.sv
 ../rtl/adc_acquisition/adc_acquisition_controller.sv
 ../rtl/adc_acquisition/adc_acquisition_fifo.sv
+../rtl/adc_acquisition/reg/adc_acquisition_reg.sv
 ../rtl/croc_soc.sv
 ../rtl/croc_chip.sv
 ../rtl/test/tb_croc_pkg.sv

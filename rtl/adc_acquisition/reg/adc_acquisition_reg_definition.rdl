@@ -3,10 +3,10 @@
 // define errors; overflows....
 
 
-enum adc_mode_e {
-  IDLE=0;
-  SINGLE_ACQ_F0=10;
-  CONTINUOUS_ACQ_F0_F1=20;
+enum adc_mode {
+  IDLE                 = 0x00;
+  SINGLE_ACQ_F0        = 0x04;
+  CONTINUOUS_ACQ_F0_F1 = 0x10;
 };
 
 
@@ -41,25 +41,25 @@ addrmap adc_acquisition_reg {
       desc   = "configure acquisition system mode (idle, running in mode x, ...)";
       hw     = rw;
       sw     = rw;
-      encode = adc_mode_e;
-    } STATUS[8] = adc_mode_e::IDLE;
+      encode = adc_mode;
+    } MODE[8] = adc_mode::IDLE;
 
     field fx_full_f {
       name = "Block Fx Full";
       desc = "High if the Fx Block was fully written";
-      hw   = w;
+      hw   = rw;
       sw   = rw;
       woclr;
     };
 
-    fx_full_f f0_full = 0;
-    fx_full_f f1_full = 0;
+    fx_full_f F0_FULL = 0;
+    fx_full_f F1_FULL = 0;
 
   } STATUS;
 
 
   /////////////////////////////////////
-  // memory addresses for frames //
+  // memory addresses (word aligned) //
   /////////////////////////////////////
 
   reg {
@@ -67,9 +67,9 @@ addrmap adc_acquisition_reg {
     desc="Pointer to the current memory address the acquisition is writing to, (can be reset using the control reg)";
     field {
       name="Pointer";
-      hw = w;
+      hw = rw;
       sw = r;
-    } pointer[31:0] = 0x00000000;
+    } WORD_ADDRESS[31:2] = 0x00000000;
   } WRITE_HEAD;
 
   reg address_config_r {
@@ -78,7 +78,7 @@ addrmap adc_acquisition_reg {
       name="Address";
       hw=r;
       sw=w;
-    } address[31:0] = 0x00000000;
+    } WORD_ADDRESS[31:2] = 0x00000000;
   };
 
   address_config_r F0_START_ADDR;

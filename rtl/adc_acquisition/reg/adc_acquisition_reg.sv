@@ -175,39 +175,45 @@ module adc_acquisition_reg #(
             struct {
                 logic [7:0] next;
                 logic load_next;
-            } STATUS;
+            } MODE;
             struct {
                 logic next;
                 logic load_next;
-            } f0_full;
+            } F0_FULL;
             struct {
                 logic next;
                 logic load_next;
-            } f1_full;
+            } F1_FULL;
         } STATUS;
         struct {
             struct {
-                logic [31:0] next;
+                logic [29:0] next;
                 logic load_next;
-            } address;
+            } WORD_ADDRESS;
+        } WRITE_HEAD;
+        struct {
+            struct {
+                logic [29:0] next;
+                logic load_next;
+            } WORD_ADDRESS;
         } F0_START_ADDR;
         struct {
             struct {
-                logic [31:0] next;
+                logic [29:0] next;
                 logic load_next;
-            } address;
+            } WORD_ADDRESS;
         } F0_END_ADDR;
         struct {
             struct {
-                logic [31:0] next;
+                logic [29:0] next;
                 logic load_next;
-            } address;
+            } WORD_ADDRESS;
         } F1_START_ADDR;
         struct {
             struct {
-                logic [31:0] next;
+                logic [29:0] next;
                 logic load_next;
-            } address;
+            } WORD_ADDRESS;
         } F1_END_ADDR;
     } field_combo_t;
     field_combo_t field_combo;
@@ -221,33 +227,38 @@ module adc_acquisition_reg #(
         struct {
             struct {
                 logic [7:0] value;
-            } STATUS;
+            } MODE;
             struct {
                 logic value;
-            } f0_full;
+            } F0_FULL;
             struct {
                 logic value;
-            } f1_full;
+            } F1_FULL;
         } STATUS;
         struct {
             struct {
-                logic [31:0] value;
-            } address;
+                logic [29:0] value;
+            } WORD_ADDRESS;
+        } WRITE_HEAD;
+        struct {
+            struct {
+                logic [29:0] value;
+            } WORD_ADDRESS;
         } F0_START_ADDR;
         struct {
             struct {
-                logic [31:0] value;
-            } address;
+                logic [29:0] value;
+            } WORD_ADDRESS;
         } F0_END_ADDR;
         struct {
             struct {
-                logic [31:0] value;
-            } address;
+                logic [29:0] value;
+            } WORD_ADDRESS;
         } F1_START_ADDR;
         struct {
             struct {
-                logic [31:0] value;
-            } address;
+                logic [29:0] value;
+            } WORD_ADDRESS;
         } F1_END_ADDR;
     } field_storage_t;
     field_storage_t field_storage;
@@ -274,174 +285,199 @@ module adc_acquisition_reg #(
         end
     end
     assign hwif_out.CNTRL.RESET_WRITE_HEAD.value = field_storage.CNTRL.RESET_WRITE_HEAD.value;
-    // Field: adc_acquisition_reg.STATUS.STATUS
+    // Field: adc_acquisition_reg.STATUS.MODE
     always_comb begin
         automatic logic [7:0] next_c;
         automatic logic load_next_c;
-        next_c = field_storage.STATUS.STATUS.value;
+        next_c = field_storage.STATUS.MODE.value;
         load_next_c = '0;
         if(decoded_reg_strb.STATUS && decoded_req_is_wr) begin // SW write
-            next_c = (field_storage.STATUS.STATUS.value & ~decoded_wr_biten[7:0]) | (decoded_wr_data[7:0] & decoded_wr_biten[7:0]);
+            next_c = (field_storage.STATUS.MODE.value & ~decoded_wr_biten[7:0]) | (decoded_wr_data[7:0] & decoded_wr_biten[7:0]);
             load_next_c = '1;
         end else begin // HW Write
-            next_c = hwif_in.STATUS.STATUS.next;
+            next_c = hwif_in.STATUS.MODE.next;
             load_next_c = '1;
         end
-        field_combo.STATUS.STATUS.next = next_c;
-        field_combo.STATUS.STATUS.load_next = load_next_c;
+        field_combo.STATUS.MODE.next = next_c;
+        field_combo.STATUS.MODE.load_next = load_next_c;
     end
     always_ff @(posedge clk) begin
         if(rst) begin
-            field_storage.STATUS.STATUS.value <= 8'h0;
+            field_storage.STATUS.MODE.value <= 8'h0;
         end else begin
-            if(field_combo.STATUS.STATUS.load_next) begin
-                field_storage.STATUS.STATUS.value <= field_combo.STATUS.STATUS.next;
+            if(field_combo.STATUS.MODE.load_next) begin
+                field_storage.STATUS.MODE.value <= field_combo.STATUS.MODE.next;
             end
         end
     end
-    assign hwif_out.STATUS.STATUS.value = field_storage.STATUS.STATUS.value;
-    // Field: adc_acquisition_reg.STATUS.f0_full
+    assign hwif_out.STATUS.MODE.value = field_storage.STATUS.MODE.value;
+    // Field: adc_acquisition_reg.STATUS.F0_FULL
     always_comb begin
         automatic logic [0:0] next_c;
         automatic logic load_next_c;
-        next_c = field_storage.STATUS.f0_full.value;
+        next_c = field_storage.STATUS.F0_FULL.value;
         load_next_c = '0;
         if(decoded_reg_strb.STATUS && decoded_req_is_wr) begin // SW write 1 clear
-            next_c = field_storage.STATUS.f0_full.value & ~(decoded_wr_data[8:8] & decoded_wr_biten[8:8]);
+            next_c = field_storage.STATUS.F0_FULL.value & ~(decoded_wr_data[8:8] & decoded_wr_biten[8:8]);
             load_next_c = '1;
         end else begin // HW Write
-            next_c = hwif_in.STATUS.f0_full.next;
+            next_c = hwif_in.STATUS.F0_FULL.next;
             load_next_c = '1;
         end
-        field_combo.STATUS.f0_full.next = next_c;
-        field_combo.STATUS.f0_full.load_next = load_next_c;
+        field_combo.STATUS.F0_FULL.next = next_c;
+        field_combo.STATUS.F0_FULL.load_next = load_next_c;
     end
     always_ff @(posedge clk) begin
         if(rst) begin
-            field_storage.STATUS.f0_full.value <= 1'h0;
+            field_storage.STATUS.F0_FULL.value <= 1'h0;
         end else begin
-            if(field_combo.STATUS.f0_full.load_next) begin
-                field_storage.STATUS.f0_full.value <= field_combo.STATUS.f0_full.next;
+            if(field_combo.STATUS.F0_FULL.load_next) begin
+                field_storage.STATUS.F0_FULL.value <= field_combo.STATUS.F0_FULL.next;
             end
         end
     end
-    // Field: adc_acquisition_reg.STATUS.f1_full
+    assign hwif_out.STATUS.F0_FULL.value = field_storage.STATUS.F0_FULL.value;
+    // Field: adc_acquisition_reg.STATUS.F1_FULL
     always_comb begin
         automatic logic [0:0] next_c;
         automatic logic load_next_c;
-        next_c = field_storage.STATUS.f1_full.value;
+        next_c = field_storage.STATUS.F1_FULL.value;
         load_next_c = '0;
         if(decoded_reg_strb.STATUS && decoded_req_is_wr) begin // SW write 1 clear
-            next_c = field_storage.STATUS.f1_full.value & ~(decoded_wr_data[9:9] & decoded_wr_biten[9:9]);
+            next_c = field_storage.STATUS.F1_FULL.value & ~(decoded_wr_data[9:9] & decoded_wr_biten[9:9]);
             load_next_c = '1;
         end else begin // HW Write
-            next_c = hwif_in.STATUS.f1_full.next;
+            next_c = hwif_in.STATUS.F1_FULL.next;
             load_next_c = '1;
         end
-        field_combo.STATUS.f1_full.next = next_c;
-        field_combo.STATUS.f1_full.load_next = load_next_c;
+        field_combo.STATUS.F1_FULL.next = next_c;
+        field_combo.STATUS.F1_FULL.load_next = load_next_c;
     end
     always_ff @(posedge clk) begin
         if(rst) begin
-            field_storage.STATUS.f1_full.value <= 1'h0;
+            field_storage.STATUS.F1_FULL.value <= 1'h0;
         end else begin
-            if(field_combo.STATUS.f1_full.load_next) begin
-                field_storage.STATUS.f1_full.value <= field_combo.STATUS.f1_full.next;
+            if(field_combo.STATUS.F1_FULL.load_next) begin
+                field_storage.STATUS.F1_FULL.value <= field_combo.STATUS.F1_FULL.next;
             end
         end
     end
-    // Field: adc_acquisition_reg.F0_START_ADDR.address
+    assign hwif_out.STATUS.F1_FULL.value = field_storage.STATUS.F1_FULL.value;
+    // Field: adc_acquisition_reg.WRITE_HEAD.WORD_ADDRESS
     always_comb begin
-        automatic logic [31:0] next_c;
+        automatic logic [29:0] next_c;
         automatic logic load_next_c;
-        next_c = field_storage.F0_START_ADDR.address.value;
+        next_c = field_storage.WRITE_HEAD.WORD_ADDRESS.value;
+        load_next_c = '0;
+        
+        // HW Write
+        next_c = hwif_in.WRITE_HEAD.WORD_ADDRESS.next;
+        load_next_c = '1;
+        field_combo.WRITE_HEAD.WORD_ADDRESS.next = next_c;
+        field_combo.WRITE_HEAD.WORD_ADDRESS.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.WRITE_HEAD.WORD_ADDRESS.value <= 30'h0;
+        end else begin
+            if(field_combo.WRITE_HEAD.WORD_ADDRESS.load_next) begin
+                field_storage.WRITE_HEAD.WORD_ADDRESS.value <= field_combo.WRITE_HEAD.WORD_ADDRESS.next;
+            end
+        end
+    end
+    assign hwif_out.WRITE_HEAD.WORD_ADDRESS.value = field_storage.WRITE_HEAD.WORD_ADDRESS.value;
+    // Field: adc_acquisition_reg.F0_START_ADDR.WORD_ADDRESS
+    always_comb begin
+        automatic logic [29:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.F0_START_ADDR.WORD_ADDRESS.value;
         load_next_c = '0;
         if(decoded_reg_strb.F0_START_ADDR && decoded_req_is_wr) begin // SW write
-            next_c = (field_storage.F0_START_ADDR.address.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            next_c = (field_storage.F0_START_ADDR.WORD_ADDRESS.value & ~decoded_wr_biten[31:2]) | (decoded_wr_data[31:2] & decoded_wr_biten[31:2]);
             load_next_c = '1;
         end
-        field_combo.F0_START_ADDR.address.next = next_c;
-        field_combo.F0_START_ADDR.address.load_next = load_next_c;
+        field_combo.F0_START_ADDR.WORD_ADDRESS.next = next_c;
+        field_combo.F0_START_ADDR.WORD_ADDRESS.load_next = load_next_c;
     end
     always_ff @(posedge clk) begin
         if(rst) begin
-            field_storage.F0_START_ADDR.address.value <= 32'h0;
+            field_storage.F0_START_ADDR.WORD_ADDRESS.value <= 30'h0;
         end else begin
-            if(field_combo.F0_START_ADDR.address.load_next) begin
-                field_storage.F0_START_ADDR.address.value <= field_combo.F0_START_ADDR.address.next;
+            if(field_combo.F0_START_ADDR.WORD_ADDRESS.load_next) begin
+                field_storage.F0_START_ADDR.WORD_ADDRESS.value <= field_combo.F0_START_ADDR.WORD_ADDRESS.next;
             end
         end
     end
-    assign hwif_out.F0_START_ADDR.address.value = field_storage.F0_START_ADDR.address.value;
-    // Field: adc_acquisition_reg.F0_END_ADDR.address
+    assign hwif_out.F0_START_ADDR.WORD_ADDRESS.value = field_storage.F0_START_ADDR.WORD_ADDRESS.value;
+    // Field: adc_acquisition_reg.F0_END_ADDR.WORD_ADDRESS
     always_comb begin
-        automatic logic [31:0] next_c;
+        automatic logic [29:0] next_c;
         automatic logic load_next_c;
-        next_c = field_storage.F0_END_ADDR.address.value;
+        next_c = field_storage.F0_END_ADDR.WORD_ADDRESS.value;
         load_next_c = '0;
         if(decoded_reg_strb.F0_END_ADDR && decoded_req_is_wr) begin // SW write
-            next_c = (field_storage.F0_END_ADDR.address.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            next_c = (field_storage.F0_END_ADDR.WORD_ADDRESS.value & ~decoded_wr_biten[31:2]) | (decoded_wr_data[31:2] & decoded_wr_biten[31:2]);
             load_next_c = '1;
         end
-        field_combo.F0_END_ADDR.address.next = next_c;
-        field_combo.F0_END_ADDR.address.load_next = load_next_c;
+        field_combo.F0_END_ADDR.WORD_ADDRESS.next = next_c;
+        field_combo.F0_END_ADDR.WORD_ADDRESS.load_next = load_next_c;
     end
     always_ff @(posedge clk) begin
         if(rst) begin
-            field_storage.F0_END_ADDR.address.value <= 32'h0;
+            field_storage.F0_END_ADDR.WORD_ADDRESS.value <= 30'h0;
         end else begin
-            if(field_combo.F0_END_ADDR.address.load_next) begin
-                field_storage.F0_END_ADDR.address.value <= field_combo.F0_END_ADDR.address.next;
+            if(field_combo.F0_END_ADDR.WORD_ADDRESS.load_next) begin
+                field_storage.F0_END_ADDR.WORD_ADDRESS.value <= field_combo.F0_END_ADDR.WORD_ADDRESS.next;
             end
         end
     end
-    assign hwif_out.F0_END_ADDR.address.value = field_storage.F0_END_ADDR.address.value;
-    // Field: adc_acquisition_reg.F1_START_ADDR.address
+    assign hwif_out.F0_END_ADDR.WORD_ADDRESS.value = field_storage.F0_END_ADDR.WORD_ADDRESS.value;
+    // Field: adc_acquisition_reg.F1_START_ADDR.WORD_ADDRESS
     always_comb begin
-        automatic logic [31:0] next_c;
+        automatic logic [29:0] next_c;
         automatic logic load_next_c;
-        next_c = field_storage.F1_START_ADDR.address.value;
+        next_c = field_storage.F1_START_ADDR.WORD_ADDRESS.value;
         load_next_c = '0;
         if(decoded_reg_strb.F1_START_ADDR && decoded_req_is_wr) begin // SW write
-            next_c = (field_storage.F1_START_ADDR.address.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            next_c = (field_storage.F1_START_ADDR.WORD_ADDRESS.value & ~decoded_wr_biten[31:2]) | (decoded_wr_data[31:2] & decoded_wr_biten[31:2]);
             load_next_c = '1;
         end
-        field_combo.F1_START_ADDR.address.next = next_c;
-        field_combo.F1_START_ADDR.address.load_next = load_next_c;
+        field_combo.F1_START_ADDR.WORD_ADDRESS.next = next_c;
+        field_combo.F1_START_ADDR.WORD_ADDRESS.load_next = load_next_c;
     end
     always_ff @(posedge clk) begin
         if(rst) begin
-            field_storage.F1_START_ADDR.address.value <= 32'h0;
+            field_storage.F1_START_ADDR.WORD_ADDRESS.value <= 30'h0;
         end else begin
-            if(field_combo.F1_START_ADDR.address.load_next) begin
-                field_storage.F1_START_ADDR.address.value <= field_combo.F1_START_ADDR.address.next;
+            if(field_combo.F1_START_ADDR.WORD_ADDRESS.load_next) begin
+                field_storage.F1_START_ADDR.WORD_ADDRESS.value <= field_combo.F1_START_ADDR.WORD_ADDRESS.next;
             end
         end
     end
-    assign hwif_out.F1_START_ADDR.address.value = field_storage.F1_START_ADDR.address.value;
-    // Field: adc_acquisition_reg.F1_END_ADDR.address
+    assign hwif_out.F1_START_ADDR.WORD_ADDRESS.value = field_storage.F1_START_ADDR.WORD_ADDRESS.value;
+    // Field: adc_acquisition_reg.F1_END_ADDR.WORD_ADDRESS
     always_comb begin
-        automatic logic [31:0] next_c;
+        automatic logic [29:0] next_c;
         automatic logic load_next_c;
-        next_c = field_storage.F1_END_ADDR.address.value;
+        next_c = field_storage.F1_END_ADDR.WORD_ADDRESS.value;
         load_next_c = '0;
         if(decoded_reg_strb.F1_END_ADDR && decoded_req_is_wr) begin // SW write
-            next_c = (field_storage.F1_END_ADDR.address.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            next_c = (field_storage.F1_END_ADDR.WORD_ADDRESS.value & ~decoded_wr_biten[31:2]) | (decoded_wr_data[31:2] & decoded_wr_biten[31:2]);
             load_next_c = '1;
         end
-        field_combo.F1_END_ADDR.address.next = next_c;
-        field_combo.F1_END_ADDR.address.load_next = load_next_c;
+        field_combo.F1_END_ADDR.WORD_ADDRESS.next = next_c;
+        field_combo.F1_END_ADDR.WORD_ADDRESS.load_next = load_next_c;
     end
     always_ff @(posedge clk) begin
         if(rst) begin
-            field_storage.F1_END_ADDR.address.value <= 32'h0;
+            field_storage.F1_END_ADDR.WORD_ADDRESS.value <= 30'h0;
         end else begin
-            if(field_combo.F1_END_ADDR.address.load_next) begin
-                field_storage.F1_END_ADDR.address.value <= field_combo.F1_END_ADDR.address.next;
+            if(field_combo.F1_END_ADDR.WORD_ADDRESS.load_next) begin
+                field_storage.F1_END_ADDR.WORD_ADDRESS.value <= field_combo.F1_END_ADDR.WORD_ADDRESS.next;
             end
         end
     end
-    assign hwif_out.F1_END_ADDR.address.value = field_storage.F1_END_ADDR.address.value;
+    assign hwif_out.F1_END_ADDR.WORD_ADDRESS.value = field_storage.F1_END_ADDR.WORD_ADDRESS.value;
 
     //--------------------------------------------------------------------------
     // Write response
@@ -464,12 +500,12 @@ module adc_acquisition_reg #(
         automatic logic [31:0] readback_data_var;
         readback_data_var = '0;
         if(rd_mux_addr == 5'h4) begin
-            readback_data_var[7:0] = field_storage.STATUS.STATUS.value;
-            readback_data_var[8] = field_storage.STATUS.f0_full.value;
-            readback_data_var[9] = field_storage.STATUS.f1_full.value;
+            readback_data_var[7:0] = field_storage.STATUS.MODE.value;
+            readback_data_var[8] = field_storage.STATUS.F0_FULL.value;
+            readback_data_var[9] = field_storage.STATUS.F1_FULL.value;
         end
         if(rd_mux_addr == 5'h8) begin
-            readback_data_var[31:0] = hwif_in.WRITE_HEAD.pointer.next;
+            readback_data_var[31:2] = field_storage.WRITE_HEAD.WORD_ADDRESS.value;
         end
         readback_data = readback_data_var;
         readback_done = decoded_req & ~decoded_req_is_wr;

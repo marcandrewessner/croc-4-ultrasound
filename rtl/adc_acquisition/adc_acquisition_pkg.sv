@@ -4,9 +4,17 @@
 package adc_acquisition_pkg;
 
   //////////////////////////////////////
+  // register types //
+  //////////////////////////////////////
+  import adc_acquisition_reg_pkg::*;
+  typedef adc_acquisition_reg__in_t  reg2hw_t;
+  typedef adc_acquisition_reg__out_t hw2reg_t;
+
+  //////////////////////////////////////
   // system configuration //
   //////////////////////////////////////
-  localparam ADC_BIT_WIDTH = 14;
+  localparam int ADC_BIT_WIDTH = 14;
+  localparam int ADC_REGISTER_BASE_ADDRESS = 32'h0300_C000;
 
   //////////////////////////////////////
   // type definitions //

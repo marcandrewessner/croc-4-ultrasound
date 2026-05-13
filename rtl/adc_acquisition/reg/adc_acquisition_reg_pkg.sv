@@ -17,24 +17,24 @@ package adc_acquisition_reg_pkg;
 
     typedef struct {
         logic [7:0] next;
-    } adc_acquisition_reg__STATUS__STATUS__in_t;
+    } adc_acquisition_reg__STATUS__MODE__in_t;
 
     typedef struct {
         logic next;
     } adc_acquisition_reg__STATUS__fx_full_f__in_t;
 
     typedef struct {
-        adc_acquisition_reg__STATUS__STATUS__in_t STATUS;
-        adc_acquisition_reg__STATUS__fx_full_f__in_t f0_full;
-        adc_acquisition_reg__STATUS__fx_full_f__in_t f1_full;
+        adc_acquisition_reg__STATUS__MODE__in_t MODE;
+        adc_acquisition_reg__STATUS__fx_full_f__in_t F0_FULL;
+        adc_acquisition_reg__STATUS__fx_full_f__in_t F1_FULL;
     } adc_acquisition_reg__STATUS__in_t;
 
     typedef struct {
-        logic [31:0] next;
-    } adc_acquisition_reg__WRITE_HEAD__pointer__in_t;
+        logic [29:0] next;
+    } adc_acquisition_reg__WRITE_HEAD__WORD_ADDRESS__in_t;
 
     typedef struct {
-        adc_acquisition_reg__WRITE_HEAD__pointer__in_t pointer;
+        adc_acquisition_reg__WRITE_HEAD__WORD_ADDRESS__in_t WORD_ADDRESS;
     } adc_acquisition_reg__WRITE_HEAD__in_t;
 
     typedef struct {
@@ -53,23 +53,38 @@ package adc_acquisition_reg_pkg;
 
     typedef struct {
         logic [7:0] value;
-    } adc_acquisition_reg__STATUS__STATUS__out_t;
+    } adc_acquisition_reg__STATUS__MODE__out_t;
 
     typedef struct {
-        adc_acquisition_reg__STATUS__STATUS__out_t STATUS;
+        logic value;
+    } adc_acquisition_reg__STATUS__fx_full_f__out_t;
+
+    typedef struct {
+        adc_acquisition_reg__STATUS__MODE__out_t MODE;
+        adc_acquisition_reg__STATUS__fx_full_f__out_t F0_FULL;
+        adc_acquisition_reg__STATUS__fx_full_f__out_t F1_FULL;
     } adc_acquisition_reg__STATUS__out_t;
 
     typedef struct {
-        logic [31:0] value;
-    } adc_acquisition_reg__address_config_r__address__out_t;
+        logic [29:0] value;
+    } adc_acquisition_reg__WRITE_HEAD__WORD_ADDRESS__out_t;
 
     typedef struct {
-        adc_acquisition_reg__address_config_r__address__out_t address;
+        adc_acquisition_reg__WRITE_HEAD__WORD_ADDRESS__out_t WORD_ADDRESS;
+    } adc_acquisition_reg__WRITE_HEAD__out_t;
+
+    typedef struct {
+        logic [29:0] value;
+    } adc_acquisition_reg__address_config_r__WORD_ADDRESS__out_t;
+
+    typedef struct {
+        adc_acquisition_reg__address_config_r__WORD_ADDRESS__out_t WORD_ADDRESS;
     } adc_acquisition_reg__address_config_r__out_t;
 
     typedef struct {
         adc_acquisition_reg__CNTRL__out_t CNTRL;
         adc_acquisition_reg__STATUS__out_t STATUS;
+        adc_acquisition_reg__WRITE_HEAD__out_t WRITE_HEAD;
         adc_acquisition_reg__address_config_r__out_t F0_START_ADDR;
         adc_acquisition_reg__address_config_r__out_t F0_END_ADDR;
         adc_acquisition_reg__address_config_r__out_t F1_START_ADDR;
@@ -77,8 +92,8 @@ package adc_acquisition_reg_pkg;
     } adc_acquisition_reg__out_t;
 
     typedef enum logic [4:0] {
-        adc_mode_e__IDLE = 'h0,
-        adc_mode_e__SINGLE_ACQ_F0 = 'ha,
-        adc_mode_e__CONTINUOUS_ACQ_F0_F1 = 'h14
-    } adc_mode_e_e;
+        adc_mode__IDLE = 'h0,
+        adc_mode__SINGLE_ACQ_F0 = 'h4,
+        adc_mode__CONTINUOUS_ACQ_F0_F1 = 'h10
+    } adc_mode_e;
 endpackage

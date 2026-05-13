@@ -1,4 +1,6 @@
 
+// TODOs
+// implement SRAM backpressure into FIFO
 
 // This module acts as the top module for the acquisition
 // pipeline. it allows for transfering the aquisition data
@@ -6,6 +8,8 @@
 // note it directly handles the CDC
 
 module adc_acquisition_top import adc_acquisition_pkg::*; #(
+  /// The OBI configuration connected to this peripheral.
+  parameter obi_pkg::obi_cfg_t ObiSbrCfg = obi_pkg::ObiDefaultConfig, // SbrObiCfg
   /// OBI MGR ports
   parameter type mgr_obi_req_t = logic,
   parameter type mgr_obi_rsp_t = logic,
@@ -30,18 +34,42 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
 );
 
   //////////////////////////////////////
-  // prepare signals //
+  // registers (w obi connection) //
   //////////////////////////////////////
-  // CDC Outputs
-  logic adc_data_valid_sync;
-  adc_data_raw_t adc_data_sync;
-  // Packing data into words
-  logic has_adc_data_word;
-  adc_data_word_t adc_data_word;
+  logic [adc_acquisition_reg_pkg::ADC_ACQUISITION_REG_MIN_ADDR_WIDTH-1:0] sbr_obi_req_relative_addr;
+  reg2hw_t hw2reg;
+  hw2reg_t reg2hw;
+  adc_acquisition_reg #(
+    .ID_WIDTH(ObiSbrCfg.IdWidth)
+  ) i_adc_acquisition_reg (
+    .clk( clk_i ),
+    .rst( ~rst_ni ),
+    // Hardware register interface
+    .hwif_in  ( hw2reg ),
+    .hwif_out ( reg2hw ),
+    // OBI
+    .s_obi_req    ( sbr_obi_req_i.req ),
+    .s_obi_gnt    ( sbr_obi_rsp_o.gnt ),
+    .s_obi_addr   ( sbr_obi_req_relative_addr ),
+    .s_obi_we     ( sbr_obi_req_i.a.we ),
+    .s_obi_be     ( sbr_obi_req_i.a.be ),
+    .s_obi_wdata  ( sbr_obi_req_i.a.wdata ),
+    .s_obi_aid    ( sbr_obi_req_i.a.aid ),
+    .s_obi_rvalid ( sbr_obi_rsp_o.rvalid ),
+    .s_obi_rready ( 1 ),
+    .s_obi_rdata  ( sbr_obi_rsp_o.r.rdata ),
+    .s_obi_err    ( sbr_obi_rsp_o.r.err ),
+    .s_obi_rid    ( sbr_obi_rsp_o.r.rid )
+  );
+
+  assign sbr_obi_req_relative_addr  = (sbr_obi_req_i.a.addr - ADC_REGISTER_BASE_ADDRESS);
+  assign sbr_obi_rsp_o.r.r_optional = '0;
 
   //////////////////////////////////////
   // CDC for adc inputs //
   //////////////////////////////////////
+  logic adc_data_valid_sync;
+  adc_data_raw_t adc_data_sync;
   cdc_fifo_gray #(
     .WIDTH( ADC_BIT_WIDTH )
   ) i_cdc_fifo_gray (
@@ -61,7 +89,10 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
   //////////////////////////////////////
   // read the data into batched fifo //
   //////////////////////////////////////
-  logic [ADC_BIT_WIDTH-1:0] adc_data_tmp [1:0];
+  logic adc_data_soft_rst;
+  logic adc_data_word_ready;
+  adc_data_word_t adc_data_word;
+  logic [ADC_BIT_WIDTH-1:0] adc_data_unpacked [1:0];
   adc_acquisition_fifo #(
     .DATA_WIDTH ( ADC_BIT_WIDTH ),
     .BATCH_SIZE ( 2 ),
@@ -69,36 +100,76 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
   ) i_adc_acquisition_fifo (
     .clk_i, .rst_ni,
     .soft_rst_i ( 0 ),
-    .read_i     ( has_adc_data_word ),
+    .read_i     ( adc_data_word_ready ),
     .write_i    ( adc_data_valid_sync ),
     .data_i     ( adc_data_sync ),
-    .valid_o    ( has_adc_data_word ),
+    .valid_o    ( adc_data_word_ready ),
     .overflow_o (),
-    .data_o     ( adc_data_tmp )
+    .data_o     ( adc_data_unpacked )
   );
-  assign adc_data_word = {2'b00, adc_data_tmp[1], 2'b00, adc_data_tmp[0]};
+  // pack the data into a word
+  assign adc_data_word = {2'b00, adc_data_unpacked[1], 2'b00, adc_data_unpacked[0]};
 
   //////////////////////////////////////
-  // push data directly into sram //
+  // control logic //
   //////////////////////////////////////
-  localparam int SRAM_BASE_ADDRESS = 32'h1000_1000;
-  int address_d, address_q;
+  logic        dma_push;     // signal to push the data
+  logic [31:0] dma_data;     // data
+  logic [31:0] dma_address;  // address
+  always_comb begin : adc_control_logic
+    // ADC Data Fifo Control
+    adc_data_soft_rst = 0;
+    // Default DMA control
+    dma_push    = '0;
+    dma_data    = 'x;
+    dma_address = 'x;
+    // Latch the data
+    hw2reg.STATUS.MODE.next             = reg2hw.STATUS.MODE.value;
+    hw2reg.STATUS.F0_FULL.next          = reg2hw.STATUS.F0_FULL.value;
+    hw2reg.STATUS.F1_FULL.next          = reg2hw.STATUS.F1_FULL.value;
+    hw2reg.WRITE_HEAD.WORD_ADDRESS.next = reg2hw.WRITE_HEAD.WORD_ADDRESS.value;
+    hw2reg.CNTRL.RESET_WRITE_HEAD.next  = reg2hw.CNTRL.RESET_WRITE_HEAD.value;
 
-  `FF(address_q, address_d, SRAM_BASE_ADDRESS, clk_i, rst_ni)
+    if(reg2hw.CNTRL.RESET_WRITE_HEAD.value) begin
+      hw2reg.CNTRL.RESET_WRITE_HEAD.next  = '0;
+      hw2reg.WRITE_HEAD.WORD_ADDRESS.next = reg2hw.F0_START_ADDR.WORD_ADDRESS.value;
+    end
 
-  always_comb begin : adc_dma_logic
-    interrupt_frame_full_o = address_q >= SRAM_BASE_ADDRESS+'d20;
-    address_d = address_q + (has_adc_data_word && !interrupt_frame_full_o ? 1 : 0);
-    
-    mgr_obi_req_o.req     = has_adc_data_word;
-    mgr_obi_req_o.a.addr  = address_q;
-    mgr_obi_req_o.a.we    = has_adc_data_word;
-    mgr_obi_req_o.a.be    = 4'hf;
-    mgr_obi_req_o.a.wdata = adc_data_word;
-    mgr_obi_req_o.a.aid   = 'he;
+    case (reg2hw.STATUS.MODE.value)
+      adc_acquisition_reg_pkg::adc_mode__IDLE: begin
+        adc_data_soft_rst = 1;
+      end
+      adc_acquisition_reg_pkg::adc_mode__SINGLE_ACQ_F0: begin
+        // Set the data as output
+        dma_push    = adc_data_word_ready;
+        dma_address = {reg2hw.WRITE_HEAD.WORD_ADDRESS.value, 2'b00};
+        dma_data    = adc_data_word;
+        // Increment counter if we write
+        if(dma_push)
+          hw2reg.WRITE_HEAD.WORD_ADDRESS.next = reg2hw.WRITE_HEAD.WORD_ADDRESS.value + 1;
+        // Finished Frame
+        if(reg2hw.WRITE_HEAD.WORD_ADDRESS.value==reg2hw.F0_END_ADDR.WORD_ADDRESS.value) begin
+          hw2reg.STATUS.F0_FULL.next = 1'b1;
+          hw2reg.STATUS.MODE.next    = adc_acquisition_reg_pkg::adc_mode__IDLE;
+        end
+      end
+      adc_acquisition_reg_pkg::adc_mode__CONTINUOUS_ACQ_F0_F1: begin
+      end
+      default: ;
+    endcase
 
-    // Just throw an interrupt after a recording of 200 samples = 100 words
   end
 
+  //////////////////////////////////////
+  // dma obi translator //
+  //////////////////////////////////////
+  always_comb begin : adc_dma_obi_translator
+    mgr_obi_req_o.req     = dma_push;
+    mgr_obi_req_o.a.addr  = dma_address;
+    mgr_obi_req_o.a.we    = dma_push;
+    mgr_obi_req_o.a.be    = 4'hf;
+    mgr_obi_req_o.a.wdata = dma_data;
+    mgr_obi_req_o.a.aid   = '0;
+  end
 
 endmodule
