@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# This file is used to launch interactive
-# docker container with opentitan
-# https://github.com/lowRISC/opentitan/tree/master/util/container
+# spawn an opentitan docker
+# and run the generate.sh inside there
 
 docker run --rm -t -i \
   -v $(pwd):/home/dev/src \
@@ -10,4 +9,4 @@ docker run --rm -t -i \
   --env DEV_UID=$(id -u) --env DEV_GID=$(id -g) \
   --env OPENTITAN="/home/dev/opentitan" \
   opentitan:latest \
-  bash
+  'bash /home/dev/src/rtl/adc_acquisition/reg/generate.sh'

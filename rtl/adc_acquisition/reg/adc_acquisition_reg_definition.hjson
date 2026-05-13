@@ -1,5 +1,5 @@
 {
-  name: "adc_acquisition",
+  name: "adc_acquisition_controller",
   version: "0.1.0",
   regwidth: 32,
   cip_id: 1,
@@ -7,22 +7,94 @@
     { clock: "clk_i", reset: "rst_ni", primary: true }
   ],
   bus_interfaces: [
-    { protocol: "tlul", direction: "device" }
+    //{ protocol: "obi", direction: "device" }
   ],
   registers: [
+    /////////////////////////////////////
+    // ctrl & status //
+    /////////////////////////////////////
     {
-      name: "ADC_AQ_REGA",
-      desc: "here would be a description, maw",
-      swaccess: "rw",
-      hwaccess: "hrw",
-      resval: "0x00ABCDEF",
+      name: "CNTRL",
+      desc: "execute commands directly by writing single command bits",
+      resval: "0x00000000",
       fields: [
-        {
-          bits: "31:0",
-          name: "fullregisterbits",
-          desc: "Full register bits",
+        { // Reset write head
+          bits: "0",
+          name: "reset_write_head",
+          desc: "Resets the write head position back to F0_START_ADDR",
+          swaccess: "r0w1s",
+          hwaccess: "hrw"
         },
       ],
+    },
+    {
+      name: "STATUS",
+      desc: "status & config register for adc controller",
+      resval: "0x00000000",
+      fields: [
+        { // 8bit mode reg => 255 modes supported
+          bits: "7:0",
+          name: "mode",
+          desc: "configure controller mode"
+          swaccess: "rw",
+          hwaccess: "hro",
+        },
+        { // start stop register, note the hardware is allowed to stop
+          bits: "8",
+          name: "start",
+          desc: "start the controller in configured mode",
+          swaccess: "rw",
+          hwaccess: "hrw",
+        },
+        {
+          bits: "9",
+          name: "f0_full",
+          desc: "sticky interrupt thrown when frame 0 is full",
+          swaccess: "rw1c",
+          hwaccess: "hw",
+        },
+        {
+          bits: "10",
+          name: "f1_full",
+          desc: "sticky interrupt thrown when frame 1 is full",
+          swaccess: "rw1c",
+          hwaccess: "hw",
+        },
+        // TODO: define errors, overflow and stuff like that
+      ],
+    }
+    /////////////////////////////////////
+    // memory addresses for frames //
+    /////////////////////////////////////
+    {
+      name: "WRITE_HEAD",
+      desc: "the current address to write data in (resettable to F0_START_ADDR through CNTRL reg)",
+      swaccess: "ro",
+      hwaccess: "hrw",
+    },
+    {
+      name: "F0_START_ADDR",
+      desc: "memory pointer to the starting address of F0, (first address to write to in frame 0)",
+      swaccess: "rw",
+      hwaccess: "hro",
+    },
+    {
+      name: "F0_END_ADDR",
+      desc: "memory pointer to the end address of F0, (last address to write in frame 0)",
+      swaccess: "rw",
+      hwaccess: "hro",
+    },
+    {
+      name: "F1_START_ADDR",
+      desc: "memory pointer to the starting address of F1, (first address to write to in frame 1)",
+      swaccess: "rw",
+      hwaccess: "hro",
+    },
+    {
+      name: "F1_END_ADDR",
+      desc: "memory pointer to the end address of F1, (last address to write in frame 1)",
+      swaccess: "rw",
+      hwaccess: "hro",
     },
   ],
 }
