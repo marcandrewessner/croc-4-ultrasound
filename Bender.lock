@@ -7,8 +7,8 @@ packages:
     dependencies:
     - common_cells
   axi:
-    revision: 2f395b176bee1c769c80f060a4345fda965bb04b
-    version: 0.38.0
+    revision: a256a3b86394fedf19e361047fccfdd7f6ef83e4
+    version: 0.39.9
     source:
       Git: https://github.com/pulp-platform/axi.git
     dependencies:
@@ -70,14 +70,15 @@ packages:
     - register_interface
     - tech_cells_generic
   register_interface:
-    revision: 146501d80052b61475cdc333d3aab4cd769fd5dc
-    version: 0.3.9
+    revision: b699586fb2d57521552963031ca61768ad156113
+    version: null
     source:
-      Git: https://github.com/pulp-platform/register_interface.git
+      Git: https://github.com/micha4w/register_interface.git
     dependencies:
     - apb
     - axi
     - common_cells
+    - common_verification
   riscv-dbg:
     revision: null
     version: null

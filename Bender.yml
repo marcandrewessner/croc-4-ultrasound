@@ -195,7 +195,7 @@ vendor_package:
     upstream: { git: "https://github.com/phsauter/sdhci.git", rev: "980f23f5929d26cf9333989739a19473ae3010d7" }
     patch_dir: "rtl/.patches/sdhci"
     mapping:
-      - { from: 'hw/', to: '',           patch_dir: 'hw/' }
+      - { from: 'hw/',        to: '',           patch_dir: 'hw/' }
       - { from: 'Bender.yml', to: 'Bender.yml', patch_dir: '' }
 
 
