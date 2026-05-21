@@ -1,0 +1,86 @@
+# Copyright 2022 ETH Zurich and University of Bologna.
+# Solderpad Hardware License, Version 0.51, see LICENSE for details.
+# SPDX-License-Identifier: SHL-0.51
+
+package:
+  name: sdhci
+  authors:
+    - "Anton Buchner <abuchner@student.ethz.ch>"
+    - "Micha Wehrli <miwehrli@student.ethz.ch>"
+    - "Axel Vanoni <axvanoni@student.ethz.ch>"
+
+dependencies:
+  axi:                      { git: "https://github.com/pulp-platform/axi.git",                    version: 0.39.8 }
+  common_cells:             { git: "https://github.com/pulp-platform/common_cells.git",           version: 1.38.0 }
+  common_verification:      { git: "https://github.com/pulp-platform/common_verification.git",    version: 0.2.3  }
+  obi:                      { git: "https://github.com/pulp-platform/obi",                        version: 0.1.7 }
+  opentitan_peripherals:    { git: "https://github.com/pulp-platform/opentitan_peripherals.git",  version: 0.4.0  }
+  register_interface:       { git: "https://github.com/micha4w/register_interface.git",     rev: "b699586fb2d57521552963031ca61768ad156113"  }
+
+
+sources:
+  include_dirs:
+  - hw/include
+
+  files:
+  # Level 0 (packages)
+  - hw/reg/sdhci_reg_pkg.sv
+  - hw/sdhci_pkg.sv
+  # Level 1
+  - hw/cmd_write/crc7_write.sv
+  - hw/dat_read/crc16_read.sv
+  - hw/dat_timeout.sv
+  - hw/dat_write/crc16_write.sv
+  - hw/par_ser_shift_reg.sv
+  - hw/reg/sdhci_reg_logic.sv # sdhci_reg_pkg
+  - hw/reg/sdhci_reg_top.sv # sdhci_reg_pkg
+  - hw/rsp_read/crc7_read.sv
+  - hw/sd_clk_generator.sv
+  - hw/sdhci_debounce.sv
+  - hw/sram_shift_reg.sv # tc_sram_impl
+
+
+  # Level 2
+  - hw/cmd_write/cmd_write.sv # par_ser_shift_reg, crc7_write, counter
+  - hw/dat_buffer.sv # sram_shift_reg
+  - hw/dat_read/dat_read.sv # crc16_read
+  - hw/dat_write/dat_write.sv # crc16_write
+  - hw/rsp_read/rsp_read.sv # crc7_read, counter
+
+  # Level 3
+  - hw/cmd_logic.sv # cmd_write, rsp_read, counter
+  - hw/dat_wrap.sv # dat_read_timeout, dat_buffer, dat_read, dat_write
+
+  # Level 4
+  - hw/autocmd_wrap.sv # cmd_logic, dat_wrap
+
+  # Level 5
+  - hw/sdhci_top.sv # sdhci_reg_obi, sdhci_reg_logic, sd_clk_generator, cmd_wrap, dat_wrap
+
+  # Level 6
+  - hw/sdhci_obi_to_reg.sv # register_interface to OBI bridge
+  - hw/sdhci_top_obi.sv # sdhci_top, external obi_pkg
+
+  - target: any(simulation, test)
+    files:
+      # Level 1
+      - target/sim/src/tb_dat.sv # sd_clk_generator, dat_write, dat_read
+      - target/sim/src/tb_dat_buffer_sizes.sv # dat_buffer
+      - target/sim/src/tb_reg_reset.sv # sdhci_top register reset behavior
+      - target/sim/src/tb_driver_crc.sv
+      - target/sim/model/sd_crc_7.v
+      - target/sim/model/sd_crc_16.v
+      - target/sim/src/sdhci_obi_driver.sv
+      - target/sim/src/sdhci_sd_driver.sv
+      # Level 2
+      - target/sim/model/sdModel.v # sd_crc_7, sd_crc_16
+      - target/sim/src/sdhci_vip.sv # sdhci_obi_driver
+      # Level 3
+      - target/sim/model/sd_card.sv # sdModel
+      - target/sim/src/sdhci_fixture.sv # sdhci_vip
+      # Level 4
+      - target/sim/src/tb_acmd12_errorhandling.sv # sdhci_fixture
+      - target/sim/src/tb_acmd12_interrupts.sv # sdhci_fixture
+      - target/sim/src/tb_cmd_timeout.sv # sdhci_fixture
+      - target/sim/src/tb_dat_timeout.sv # sdhci_fixture
+      - target/sim/src/tb_block_read.sv # sdhci_fixture

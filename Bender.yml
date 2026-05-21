@@ -18,6 +18,8 @@ dependencies:
   obi_peripherals:      { git: "https://github.com/pulp-platform/obi_peripherals.git",      rev: 21ee04d    } # UART
   idma:                 { git: "https://github.com/pulp-platform/idma.git",                 rev: "__deploy__e618e4d__master" } # master with generated files
   cve2:                 { path: "rtl/cve2" } # a vendor package (no Bender.yml), see below 
+  # Specifically included for this project
+  sdhci:                { git: "https://github.com/phsauter/sdhci.git",                     rev: 980f23f }
 
 
 sources:
@@ -187,6 +189,14 @@ vendor_package:
     mapping:
       - { from: 'hw/obi_uart/', to: '',            patch_dir: 'hw/' }
       - { from: 'Bender.yml',   to: 'Bender.yml',  patch_dir: '' }
+
+  - name: sdhci
+    target_dir: rtl/sdhci
+    upstream: { git: "https://github.com/phsauter/sdhci.git", rev: "980f23f5929d26cf9333989739a19473ae3010d7" }
+    patch_dir: "rtl/.patches/sdhci"
+    mapping:
+      - { from: 'hw/', to: '',           patch_dir: 'hw/' }
+      - { from: 'Bender.yml', to: 'Bender.yml', patch_dir: '' }
 
 
   #########
