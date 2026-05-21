@@ -8,9 +8,9 @@
     <dt>Absolute Address:</dt><dd id="_AbsAddr" class="address"></dd>
     <div id="_AbsAddrDetails"></div>
     <dt>Base Offset:</dt><dd class="address">0x0</dd>
-    <dt>Size:</dt><dd class="address">0x1c</dd>
+    <dt>Size:</dt><dd class="address">0x20</dd>
     
-    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L13" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
+    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L14" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
     
 </dl>
 <h2>Description</h2>
@@ -43,41 +43,49 @@
             <a class="headerlink" href="#STATUS" title="Permalink to this row"></a>
         </td>
     </tr>
-    <tr id="WRITE_HEAD">
+    <tr id="CONF">
         <td class="address">0x08</td>
-        <td><a href="?p=adc_acquisition_reg.WRITE_HEAD" data-id="3" onclick="onClickNodeLink(event); return(false)">WRITE_HEAD</a></td>
+        <td><a href="?p=adc_acquisition_reg.CONF" data-id="3" onclick="onClickNodeLink(event); return(false)">CONF</a></td>
+        <td>Config</td>
+        <td>
+            <a class="headerlink" href="#CONF" title="Permalink to this row"></a>
+        </td>
+    </tr>
+    <tr id="WRITE_HEAD">
+        <td class="address">0x0C</td>
+        <td><a href="?p=adc_acquisition_reg.WRITE_HEAD" data-id="4" onclick="onClickNodeLink(event); return(false)">WRITE_HEAD</a></td>
         <td>Write Head</td>
         <td>
             <a class="headerlink" href="#WRITE_HEAD" title="Permalink to this row"></a>
         </td>
     </tr>
     <tr id="F0_START_ADDR">
-        <td class="address">0x0C</td>
-        <td><a href="?p=adc_acquisition_reg.F0_START_ADDR" data-id="4" onclick="onClickNodeLink(event); return(false)">F0_START_ADDR</a></td>
+        <td class="address">0x10</td>
+        <td><a href="?p=adc_acquisition_reg.F0_START_ADDR" data-id="5" onclick="onClickNodeLink(event); return(false)">F0_START_ADDR</a></td>
         <td>Address Configuration</td>
         <td>
             <a class="headerlink" href="#F0_START_ADDR" title="Permalink to this row"></a>
         </td>
     </tr>
     <tr id="F0_END_ADDR">
-        <td class="address">0x10</td>
-        <td><a href="?p=adc_acquisition_reg.F0_END_ADDR" data-id="5" onclick="onClickNodeLink(event); return(false)">F0_END_ADDR</a></td>
+        <td class="address">0x14</td>
+        <td><a href="?p=adc_acquisition_reg.F0_END_ADDR" data-id="6" onclick="onClickNodeLink(event); return(false)">F0_END_ADDR</a></td>
         <td>Address Configuration</td>
         <td>
             <a class="headerlink" href="#F0_END_ADDR" title="Permalink to this row"></a>
         </td>
     </tr>
     <tr id="F1_START_ADDR">
-        <td class="address">0x14</td>
-        <td><a href="?p=adc_acquisition_reg.F1_START_ADDR" data-id="6" onclick="onClickNodeLink(event); return(false)">F1_START_ADDR</a></td>
+        <td class="address">0x18</td>
+        <td><a href="?p=adc_acquisition_reg.F1_START_ADDR" data-id="7" onclick="onClickNodeLink(event); return(false)">F1_START_ADDR</a></td>
         <td>Address Configuration</td>
         <td>
             <a class="headerlink" href="#F1_START_ADDR" title="Permalink to this row"></a>
         </td>
     </tr>
     <tr id="F1_END_ADDR">
-        <td class="address">0x18</td>
-        <td><a href="?p=adc_acquisition_reg.F1_END_ADDR" data-id="7" onclick="onClickNodeLink(event); return(false)">F1_END_ADDR</a></td>
+        <td class="address">0x1C</td>
+        <td><a href="?p=adc_acquisition_reg.F1_END_ADDR" data-id="8" onclick="onClickNodeLink(event); return(false)">F1_END_ADDR</a></td>
         <td>Address Configuration</td>
         <td>
             <a class="headerlink" href="#F1_END_ADDR" title="Permalink to this row"></a>

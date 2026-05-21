@@ -7,6 +7,8 @@
 // into SRAM and then further, note it's a manager
 // note it directly handles the CDC
 
+`include "common_cells/registers.svh"
+
 module adc_acquisition_top import adc_acquisition_pkg::*; #(
   /// The OBI configuration connected to this peripheral.
   parameter obi_pkg::obi_cfg_t ObiSbrCfg = obi_pkg::ObiDefaultConfig, // SbrObiCfg
@@ -99,7 +101,7 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
     .FIFO_BATCH_DEPTH ( 4 )
   ) i_adc_acquisition_fifo (
     .clk_i, .rst_ni,
-    .soft_rst_i ( 0 ),
+    .soft_rst_i ( adc_data_soft_rst ),
     .read_i     ( adc_data_word_ready ),
     .write_i    ( adc_data_valid_sync ),
     .data_i     ( adc_data_sync ),
@@ -113,9 +115,18 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
   //////////////////////////////////////
   // control logic //
   //////////////////////////////////////
+  // local type definitions
+  typedef enum logic { 
+    CURRENT_FRAME_0, CURRENT_FRAME_1
+  } current_frame_e;
+  // DMA signals
   logic        dma_push;     // signal to push the data
   logic [31:0] dma_data;     // data
   logic [31:0] dma_address;  // address
+  // local logic signals
+  current_frame_e current_frame_d, current_frame_q;
+  `FF(current_frame_q, current_frame_d, CURRENT_FRAME_0, clk_i, rst_ni)
+  // logic
   always_comb begin : adc_control_logic
     // ADC Data Fifo Control
     adc_data_soft_rst = 0;
@@ -123,19 +134,28 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
     dma_push    = '0;
     dma_data    = 'x;
     dma_address = 'x;
-    // Latch the data
-    hw2reg.STATUS.MODE.next             = reg2hw.STATUS.MODE.value;
+    // Latch the local logic signals
+    current_frame_d = current_frame_q;
+    // Latch the registers
+    hw2reg.CONF.MODE.next               = reg2hw.CONF.MODE.value;
     hw2reg.STATUS.F0_FULL.next          = reg2hw.STATUS.F0_FULL.value;
     hw2reg.STATUS.F1_FULL.next          = reg2hw.STATUS.F1_FULL.value;
     hw2reg.WRITE_HEAD.WORD_ADDRESS.next = reg2hw.WRITE_HEAD.WORD_ADDRESS.value;
-    hw2reg.CNTRL.RESET_WRITE_HEAD.next  = reg2hw.CNTRL.RESET_WRITE_HEAD.value;
 
+    // Handle Control register
     if(reg2hw.CNTRL.RESET_WRITE_HEAD.value) begin
-      hw2reg.CNTRL.RESET_WRITE_HEAD.next  = '0;
       hw2reg.WRITE_HEAD.WORD_ADDRESS.next = reg2hw.F0_START_ADDR.WORD_ADDRESS.value;
+      current_frame_d = CURRENT_FRAME_0;
+    end
+    if(reg2hw.CNTRL.CLEAR_F0_FULL.value) begin
+      hw2reg.STATUS.F0_FULL.next = 0;
+    end
+    if(reg2hw.CNTRL.CLEAR_F1_FULL.value) begin
+      hw2reg.STATUS.F1_FULL.next = 0;
     end
 
-    case (reg2hw.STATUS.MODE.value)
+
+    case (reg2hw.CONF.MODE.value)
       adc_acquisition_reg_pkg::adc_mode__IDLE: begin
         adc_data_soft_rst = 1;
       end
@@ -150,10 +170,28 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
         // Finished Frame
         if(reg2hw.WRITE_HEAD.WORD_ADDRESS.value==reg2hw.F0_END_ADDR.WORD_ADDRESS.value) begin
           hw2reg.STATUS.F0_FULL.next = 1'b1;
-          hw2reg.STATUS.MODE.next    = adc_acquisition_reg_pkg::adc_mode__IDLE;
+          hw2reg.CONF.MODE.next    = adc_acquisition_reg_pkg::adc_mode__IDLE;
         end
       end
       adc_acquisition_reg_pkg::adc_mode__CONTINUOUS_ACQ_F0_F1: begin
+        // Set the data as output
+        dma_push    = adc_data_word_ready;
+        dma_address = {reg2hw.WRITE_HEAD.WORD_ADDRESS.value, 2'b00};
+        dma_data    = adc_data_word;
+        // Increment counter if we write
+        if(dma_push)
+          hw2reg.WRITE_HEAD.WORD_ADDRESS.next = reg2hw.WRITE_HEAD.WORD_ADDRESS.value + 1;
+        // On end of Frame switch to next one and raise frame full
+        if(reg2hw.WRITE_HEAD.WORD_ADDRESS.value==reg2hw.F0_END_ADDR.WORD_ADDRESS.value && current_frame_q==CURRENT_FRAME_0) begin
+          hw2reg.STATUS.F0_FULL.next = 1'b1;
+          hw2reg.WRITE_HEAD.WORD_ADDRESS.next = reg2hw.F1_START_ADDR.WORD_ADDRESS.value;
+          current_frame_d = CURRENT_FRAME_1;
+        end
+        if(reg2hw.WRITE_HEAD.WORD_ADDRESS.value==reg2hw.F1_END_ADDR.WORD_ADDRESS.value && current_frame_q==CURRENT_FRAME_1) begin
+          hw2reg.STATUS.F1_FULL.next = 1'b1;
+          hw2reg.WRITE_HEAD.WORD_ADDRESS.next = reg2hw.F0_START_ADDR.WORD_ADDRESS.value;
+          current_frame_d = CURRENT_FRAME_0;
+        end
       end
       default: ;
     endcase
@@ -161,15 +199,21 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
   end
 
   //////////////////////////////////////
-  // dma obi translator //
+  // dma obi translator & interrupts //
   //////////////////////////////////////
-  always_comb begin : adc_dma_obi_translator
+  always_comb begin : adc_dma_obi_int
+    // OBI
     mgr_obi_req_o.req     = dma_push;
     mgr_obi_req_o.a.addr  = dma_address;
     mgr_obi_req_o.a.we    = dma_push;
     mgr_obi_req_o.a.be    = 4'hf;
     mgr_obi_req_o.a.wdata = dma_data;
     mgr_obi_req_o.a.aid   = '0;
+    // INTERRUPT
+    interrupt_frame_full_o = (
+      reg2hw.STATUS.F0_FULL.value |
+      reg2hw.STATUS.F1_FULL.value
+    );
   end
 
 endmodule

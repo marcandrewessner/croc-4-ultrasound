@@ -125,6 +125,7 @@ module adc_acquisition_reg #(
     typedef struct {
         logic CNTRL;
         logic STATUS;
+        logic CONF;
         logic WRITE_HEAD;
         logic F0_START_ADDR;
         logic F0_END_ADDR;
@@ -145,12 +146,13 @@ module adc_acquisition_reg #(
         is_valid_addr = '1; // No valid address check
         is_valid_rw = '1; // No valid RW check
         decoded_reg_strb.CNTRL = cpuif_req_masked & (cpuif_addr == 5'h0) & cpuif_req_is_wr;
-        decoded_reg_strb.STATUS = cpuif_req_masked & (cpuif_addr == 5'h4);
-        decoded_reg_strb.WRITE_HEAD = cpuif_req_masked & (cpuif_addr == 5'h8) & !cpuif_req_is_wr;
-        decoded_reg_strb.F0_START_ADDR = cpuif_req_masked & (cpuif_addr == 5'hc) & cpuif_req_is_wr;
-        decoded_reg_strb.F0_END_ADDR = cpuif_req_masked & (cpuif_addr == 5'h10) & cpuif_req_is_wr;
-        decoded_reg_strb.F1_START_ADDR = cpuif_req_masked & (cpuif_addr == 5'h14) & cpuif_req_is_wr;
-        decoded_reg_strb.F1_END_ADDR = cpuif_req_masked & (cpuif_addr == 5'h18) & cpuif_req_is_wr;
+        decoded_reg_strb.STATUS = cpuif_req_masked & (cpuif_addr == 5'h4) & !cpuif_req_is_wr;
+        decoded_reg_strb.CONF = cpuif_req_masked & (cpuif_addr == 5'h8);
+        decoded_reg_strb.WRITE_HEAD = cpuif_req_masked & (cpuif_addr == 5'hc) & !cpuif_req_is_wr;
+        decoded_reg_strb.F0_START_ADDR = cpuif_req_masked & (cpuif_addr == 5'h10) & cpuif_req_is_wr;
+        decoded_reg_strb.F0_END_ADDR = cpuif_req_masked & (cpuif_addr == 5'h14) & cpuif_req_is_wr;
+        decoded_reg_strb.F1_START_ADDR = cpuif_req_masked & (cpuif_addr == 5'h18) & cpuif_req_is_wr;
+        decoded_reg_strb.F1_END_ADDR = cpuif_req_masked & (cpuif_addr == 5'h1c) & cpuif_req_is_wr;
         decoded_err = '0;
     end
 
@@ -170,12 +172,16 @@ module adc_acquisition_reg #(
                 logic next;
                 logic load_next;
             } RESET_WRITE_HEAD;
+            struct {
+                logic next;
+                logic load_next;
+            } CLEAR_F0_FULL;
+            struct {
+                logic next;
+                logic load_next;
+            } CLEAR_F1_FULL;
         } CNTRL;
         struct {
-            struct {
-                logic [7:0] next;
-                logic load_next;
-            } MODE;
             struct {
                 logic next;
                 logic load_next;
@@ -185,6 +191,12 @@ module adc_acquisition_reg #(
                 logic load_next;
             } F1_FULL;
         } STATUS;
+        struct {
+            struct {
+                logic [7:0] next;
+                logic load_next;
+            } MODE;
+        } CONF;
         struct {
             struct {
                 logic [29:0] next;
@@ -223,11 +235,14 @@ module adc_acquisition_reg #(
             struct {
                 logic value;
             } RESET_WRITE_HEAD;
+            struct {
+                logic value;
+            } CLEAR_F0_FULL;
+            struct {
+                logic value;
+            } CLEAR_F1_FULL;
         } CNTRL;
         struct {
-            struct {
-                logic [7:0] value;
-            } MODE;
             struct {
                 logic value;
             } F0_FULL;
@@ -235,6 +250,11 @@ module adc_acquisition_reg #(
                 logic value;
             } F1_FULL;
         } STATUS;
+        struct {
+            struct {
+                logic [7:0] value;
+            } MODE;
+        } CONF;
         struct {
             struct {
                 logic [29:0] value;
@@ -269,61 +289,88 @@ module adc_acquisition_reg #(
         automatic logic load_next_c;
         next_c = field_storage.CNTRL.RESET_WRITE_HEAD.value;
         load_next_c = '0;
-        if(decoded_reg_strb.CNTRL && decoded_req_is_wr) begin // SW write 1 set
-            next_c = field_storage.CNTRL.RESET_WRITE_HEAD.value | (decoded_wr_data[0:0] & decoded_wr_biten[0:0]);
+        if(decoded_reg_strb.CNTRL && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.CNTRL.RESET_WRITE_HEAD.value & ~decoded_wr_biten[0:0]) | (decoded_wr_data[0:0] & decoded_wr_biten[0:0]);
             load_next_c = '1;
-        end else begin // HW Write
-            next_c = hwif_in.CNTRL.RESET_WRITE_HEAD.next;
+        end else begin // singlepulse clears back to 0
+            next_c = '0;
             load_next_c = '1;
         end
         field_combo.CNTRL.RESET_WRITE_HEAD.next = next_c;
         field_combo.CNTRL.RESET_WRITE_HEAD.load_next = load_next_c;
     end
     always_ff @(posedge clk) begin
-        if(field_combo.CNTRL.RESET_WRITE_HEAD.load_next) begin
-            field_storage.CNTRL.RESET_WRITE_HEAD.value <= field_combo.CNTRL.RESET_WRITE_HEAD.next;
-        end
-    end
-    assign hwif_out.CNTRL.RESET_WRITE_HEAD.value = field_storage.CNTRL.RESET_WRITE_HEAD.value;
-    // Field: adc_acquisition_reg.STATUS.MODE
-    always_comb begin
-        automatic logic [7:0] next_c;
-        automatic logic load_next_c;
-        next_c = field_storage.STATUS.MODE.value;
-        load_next_c = '0;
-        if(decoded_reg_strb.STATUS && decoded_req_is_wr) begin // SW write
-            next_c = (field_storage.STATUS.MODE.value & ~decoded_wr_biten[7:0]) | (decoded_wr_data[7:0] & decoded_wr_biten[7:0]);
-            load_next_c = '1;
-        end else begin // HW Write
-            next_c = hwif_in.STATUS.MODE.next;
-            load_next_c = '1;
-        end
-        field_combo.STATUS.MODE.next = next_c;
-        field_combo.STATUS.MODE.load_next = load_next_c;
-    end
-    always_ff @(posedge clk) begin
         if(rst) begin
-            field_storage.STATUS.MODE.value <= 8'h0;
+            field_storage.CNTRL.RESET_WRITE_HEAD.value <= 1'h0;
         end else begin
-            if(field_combo.STATUS.MODE.load_next) begin
-                field_storage.STATUS.MODE.value <= field_combo.STATUS.MODE.next;
+            if(field_combo.CNTRL.RESET_WRITE_HEAD.load_next) begin
+                field_storage.CNTRL.RESET_WRITE_HEAD.value <= field_combo.CNTRL.RESET_WRITE_HEAD.next;
             end
         end
     end
-    assign hwif_out.STATUS.MODE.value = field_storage.STATUS.MODE.value;
+    assign hwif_out.CNTRL.RESET_WRITE_HEAD.value = field_storage.CNTRL.RESET_WRITE_HEAD.value;
+    // Field: adc_acquisition_reg.CNTRL.CLEAR_F0_FULL
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.CNTRL.CLEAR_F0_FULL.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.CNTRL && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.CNTRL.CLEAR_F0_FULL.value & ~decoded_wr_biten[1:1]) | (decoded_wr_data[1:1] & decoded_wr_biten[1:1]);
+            load_next_c = '1;
+        end else begin // singlepulse clears back to 0
+            next_c = '0;
+            load_next_c = '1;
+        end
+        field_combo.CNTRL.CLEAR_F0_FULL.next = next_c;
+        field_combo.CNTRL.CLEAR_F0_FULL.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.CNTRL.CLEAR_F0_FULL.value <= 1'h0;
+        end else begin
+            if(field_combo.CNTRL.CLEAR_F0_FULL.load_next) begin
+                field_storage.CNTRL.CLEAR_F0_FULL.value <= field_combo.CNTRL.CLEAR_F0_FULL.next;
+            end
+        end
+    end
+    assign hwif_out.CNTRL.CLEAR_F0_FULL.value = field_storage.CNTRL.CLEAR_F0_FULL.value;
+    // Field: adc_acquisition_reg.CNTRL.CLEAR_F1_FULL
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.CNTRL.CLEAR_F1_FULL.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.CNTRL && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.CNTRL.CLEAR_F1_FULL.value & ~decoded_wr_biten[2:2]) | (decoded_wr_data[2:2] & decoded_wr_biten[2:2]);
+            load_next_c = '1;
+        end else begin // singlepulse clears back to 0
+            next_c = '0;
+            load_next_c = '1;
+        end
+        field_combo.CNTRL.CLEAR_F1_FULL.next = next_c;
+        field_combo.CNTRL.CLEAR_F1_FULL.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.CNTRL.CLEAR_F1_FULL.value <= 1'h0;
+        end else begin
+            if(field_combo.CNTRL.CLEAR_F1_FULL.load_next) begin
+                field_storage.CNTRL.CLEAR_F1_FULL.value <= field_combo.CNTRL.CLEAR_F1_FULL.next;
+            end
+        end
+    end
+    assign hwif_out.CNTRL.CLEAR_F1_FULL.value = field_storage.CNTRL.CLEAR_F1_FULL.value;
     // Field: adc_acquisition_reg.STATUS.F0_FULL
     always_comb begin
         automatic logic [0:0] next_c;
         automatic logic load_next_c;
         next_c = field_storage.STATUS.F0_FULL.value;
         load_next_c = '0;
-        if(decoded_reg_strb.STATUS && decoded_req_is_wr) begin // SW write 1 clear
-            next_c = field_storage.STATUS.F0_FULL.value & ~(decoded_wr_data[8:8] & decoded_wr_biten[8:8]);
-            load_next_c = '1;
-        end else begin // HW Write
-            next_c = hwif_in.STATUS.F0_FULL.next;
-            load_next_c = '1;
-        end
+        
+        // HW Write
+        next_c = hwif_in.STATUS.F0_FULL.next;
+        load_next_c = '1;
         field_combo.STATUS.F0_FULL.next = next_c;
         field_combo.STATUS.F0_FULL.load_next = load_next_c;
     end
@@ -343,13 +390,10 @@ module adc_acquisition_reg #(
         automatic logic load_next_c;
         next_c = field_storage.STATUS.F1_FULL.value;
         load_next_c = '0;
-        if(decoded_reg_strb.STATUS && decoded_req_is_wr) begin // SW write 1 clear
-            next_c = field_storage.STATUS.F1_FULL.value & ~(decoded_wr_data[9:9] & decoded_wr_biten[9:9]);
-            load_next_c = '1;
-        end else begin // HW Write
-            next_c = hwif_in.STATUS.F1_FULL.next;
-            load_next_c = '1;
-        end
+        
+        // HW Write
+        next_c = hwif_in.STATUS.F1_FULL.next;
+        load_next_c = '1;
         field_combo.STATUS.F1_FULL.next = next_c;
         field_combo.STATUS.F1_FULL.load_next = load_next_c;
     end
@@ -363,6 +407,32 @@ module adc_acquisition_reg #(
         end
     end
     assign hwif_out.STATUS.F1_FULL.value = field_storage.STATUS.F1_FULL.value;
+    // Field: adc_acquisition_reg.CONF.MODE
+    always_comb begin
+        automatic logic [7:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.CONF.MODE.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.CONF && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.CONF.MODE.value & ~decoded_wr_biten[7:0]) | (decoded_wr_data[7:0] & decoded_wr_biten[7:0]);
+            load_next_c = '1;
+        end else begin // HW Write
+            next_c = hwif_in.CONF.MODE.next;
+            load_next_c = '1;
+        end
+        field_combo.CONF.MODE.next = next_c;
+        field_combo.CONF.MODE.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.CONF.MODE.value <= 8'h0;
+        end else begin
+            if(field_combo.CONF.MODE.load_next) begin
+                field_storage.CONF.MODE.value <= field_combo.CONF.MODE.next;
+            end
+        end
+    end
+    assign hwif_out.CONF.MODE.value = field_storage.CONF.MODE.value;
     // Field: adc_acquisition_reg.WRITE_HEAD.WORD_ADDRESS
     always_comb begin
         automatic logic [29:0] next_c;
@@ -500,11 +570,13 @@ module adc_acquisition_reg #(
         automatic logic [31:0] readback_data_var;
         readback_data_var = '0;
         if(rd_mux_addr == 5'h4) begin
-            readback_data_var[7:0] = field_storage.STATUS.MODE.value;
-            readback_data_var[8] = field_storage.STATUS.F0_FULL.value;
-            readback_data_var[9] = field_storage.STATUS.F1_FULL.value;
+            readback_data_var[0] = field_storage.STATUS.F0_FULL.value;
+            readback_data_var[1] = field_storage.STATUS.F1_FULL.value;
         end
         if(rd_mux_addr == 5'h8) begin
+            readback_data_var[7:0] = field_storage.CONF.MODE.value;
+        end
+        if(rd_mux_addr == 5'hc) begin
             readback_data_var[31:2] = field_storage.WRITE_HEAD.WORD_ADDRESS.value;
         end
         readback_data = readback_data_var;

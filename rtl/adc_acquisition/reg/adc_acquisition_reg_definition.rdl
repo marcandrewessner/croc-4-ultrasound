@@ -1,6 +1,7 @@
 
 // TODOs:
 // define errors; overflows....
+// in status register
 
 
 enum adc_mode {
@@ -15,7 +16,7 @@ addrmap adc_acquisition_reg {
   default regwidth = 32;
   
   /////////////////////////////////////
-  // ctrl & status //
+  // ctrl, status, config //
   /////////////////////////////////////
 
   reg {
@@ -23,18 +24,45 @@ addrmap adc_acquisition_reg {
     desc = "execute commands directly by writing single command bits";
     
     field {
-      name="reset_write_head";
-      desc="Resets the write head position back to F0_START_ADDR";
-      sw=w;
-      hw=rw;
-      woset;
-    } RESET_WRITE_HEAD;
+      name = "reset_write_head";
+      desc = "Resets the write head position back to F0_START_ADDR";
+      hw   = r;
+      sw   = w;
+      singlepulse;
+    } RESET_WRITE_HEAD = 0;
+
+    field clr_fx_full_f {
+      name = "Clear Status Fx Full";
+      desc = "Resets the status Fx_FULL register";
+      hw   = r;
+      sw   = w;
+      singlepulse;
+    };
+
+    clr_fx_full_f CLEAR_F0_FULL = 0;
+    clr_fx_full_f CLEAR_F1_FULL = 0;
     
   } CNTRL;
 
   reg {
     name="Status";
-    desc="status & config register for adc controller";
+    desc="status register for adc controller";
+
+    field fx_full_f {
+      name = "Block Fx Full";
+      desc = "High if the Fx Block was fully written";
+      hw   = rw;
+      sw   = r;
+    };
+
+    fx_full_f F0_FULL = 0;
+    fx_full_f F1_FULL = 0;
+
+  } STATUS;
+
+  reg {
+    name="Config";
+    desc="config register for adc controller";
     
     field {
       name   = "Acquisition System Mode";
@@ -44,18 +72,7 @@ addrmap adc_acquisition_reg {
       encode = adc_mode;
     } MODE[8] = adc_mode::IDLE;
 
-    field fx_full_f {
-      name = "Block Fx Full";
-      desc = "High if the Fx Block was fully written";
-      hw   = rw;
-      sw   = rw;
-      woclr;
-    };
-
-    fx_full_f F0_FULL = 0;
-    fx_full_f F1_FULL = 0;
-
-  } STATUS;
+  } CONF;
 
 
   /////////////////////////////////////

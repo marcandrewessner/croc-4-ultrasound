@@ -17,38 +17,48 @@
 #define ADC_BANK_0_ADDR 0x10001000
 #define ADC_BANK_1_ADDR 0x10001800
 
-volatile int adc_full;
+static volatile int adc_full;
 
-/*
+// Interrupt handler
 void croc_interrupt_handler(uint32_t cause) {
-  set_global_irq_enable(0);
-  adc_full = 1;
+  if(cause == ADC_ACQ_INTERRUPT){
+    ADC_ACQ->CNTRL = (
+      1<<ADC_ACQ_CTRL_CLR_F0_FULL_BIT |
+      1<<ADC_ACQ_CTRL_CLR_F1_FULL_BIT
+    );
+    adc_full=1;
+  }
 }
-*/
+
 
 int main() {
-  adc_full = 0;
   uart_init();
+  // Enable the interrupt
+  set_interrupt_enable(1, ADC_ACQ_INTERRUPT);
+  set_global_irq_enable(1);
+
+  adc_full = 0;
+
+  uint32_t n_words = 10;
 
   // Setup the frame
   ADC_ACQ->F0_START_ADDR = ADC_BANK_0_ADDR;
-  ADC_ACQ->F0_END_ADDR   = ADC_BANK_0_ADDR+100*4;
-  // Reset write head
-  ADC_ACQ->CNTRL         = 1<<0;
+  ADC_ACQ->F0_END_ADDR   = ADC_BANK_0_ADDR+n_words*4;
+  // Reset write head and clear full interrupts
+  ADC_ACQ->CNTRL         = 0b111;
   // Start the ADC ACQ
-  ADC_ACQ->STATUS = (
-    ADC_ACQ_MODE_SINGLE_ACQ_F0      |
-    1 << ADC_ACQ_STATUS_F0_FULL_BIT |
-    1 << ADC_ACQ_STATUS_F1_FULL_BIT
-  );
+  ADC_ACQ->CONF = ADC_ACQ_MODE_SINGLE_ACQ_F0;
 
   // Poll for full
   printf("POLL FOR F0 FULL\n");
-  for(volatile uint32_t i=0; i<1000; i++);
-  //while(ADC_ACQ->STATUS ^ 1<<ADC_ACQ_STATUS_F0_FULL_BIT);
+  //for(volatile uint32_t i=0; i<10000; i++);
+  //while(!(ADC_ACQ->STATUS & 1<<ADC_ACQ_STATUS_F0_FULL_BIT));
+  while(!adc_full);
+  //Clear interrupt and set idle mode
+  //ADC_ACQ->STATUS = ADC_ACQ_MODE_IDLE | 1<<ADC_ACQ_STATUS_F0_FULL_BIT;
 
   printf("BEGIN DUMP\n");
-  for(uint32_t i=0; i<20; i++){
+  for(uint32_t i=0; i<n_words; i++){
     uint32_t data = *reg32(ADC_BANK_0_ADDR, 4*i);
     uint32_t data0 = data & 0x0000FFFF;
     uint32_t data1 = (data & 0xFFFF0000) >> 16;

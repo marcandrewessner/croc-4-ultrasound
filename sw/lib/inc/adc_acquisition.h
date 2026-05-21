@@ -5,16 +5,23 @@
 
 #include "adc_acquisition_reg.h"
 
-#define ADC_ACQ_BASE 0x0300C000UL
+#define ADC_ACQ_BASE       0x0300C000UL
+#define ADC_ACQ_INTERRUPT  (16+4)
 
 // export an accessable register
 #define ADC_ACQ ((volatile adc_acquisition_reg_t*)ADC_ACQ_BASE)
 
-// Setup the modes
+// CONFIG.MODE
+#define ADC_ACQ_MODE_MASK                 ADC_ACQUISITION_REG__CONF__MODE_bm
 #define ADC_ACQ_MODE_IDLE                 0x00
 #define ADC_ACQ_MODE_SINGLE_ACQ_F0        0x04
 #define ADC_ACQ_MODE_CONTINUOUS_ACQ_F0_F1 0x10
 
-// Setup the interupt flags
-#define ADC_ACQ_STATUS_F0_FULL_BIT 9
-#define ADC_ACQ_STATUS_F1_FULL_BIT 10
+// STATUS
+#define ADC_ACQ_STATUS_F0_FULL_BIT ADC_ACQUISITION_REG__STATUS__F0_FULL_bp
+#define ADC_ACQ_STATUS_F1_FULL_BIT ADC_ACQUISITION_REG__STATUS__F1_FULL_bp
+
+// CNTRL
+#define ADC_ACQ_CTRL_CLR_F0_FULL_BIT    ADC_ACQUISITION_REG__CNTRL__CLEAR_F0_FULL_bp
+#define ADC_ACQ_CTRL_CLR_F1_FULL_BIT    ADC_ACQUISITION_REG__CNTRL__CLEAR_F1_FULL_bp
+#define ADC_ACQ_CTRL_RST_WRITE_HEAD_BIT ADC_ACQUISITION_REG__CNTRL__RESET_WRITE_HEAD_bp

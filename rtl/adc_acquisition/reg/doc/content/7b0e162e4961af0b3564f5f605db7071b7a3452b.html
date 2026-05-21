@@ -10,7 +10,7 @@
     <dt>Base Offset:</dt><dd class="address">0x0</dd>
     <dt>Size:</dt><dd class="address">0x4</dd>
     
-    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L21" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
+    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L22" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
     
 </dl>
 <h2>Description</h2>
@@ -30,7 +30,7 @@
         <th></th>
     </tr>
     <tr class="reserved-field">
-    <td>[31:1]</td>
+    <td>[31:3]</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -38,12 +38,52 @@
     <td>-</td>
     <td></td>
 </tr>
+    <tr id="CLEAR_F1_FULL">
+        <td>[2]</td>
+        <td><a href="#CLEAR_F1_FULL.desc">CLEAR_F1_FULL</a></td>
+        <td>
+            <span title='Write-only'>w</span></td>
+        <td>0x0
+        </td>
+        <td>
+            <input id="_FieldValueTesterCLEAR_F1_FULL" class="field-value-tester"
+                type="text" autocomplete="off"
+                data-name="CLEAR_F1_FULL" oninput="onDecodedFieldInput(this)"/>
+        </td>
+        <td>Clear Status Fx Full</td>
+        <td>
+            <button type="button" id="_RadixButtonCLEAR_F1_FULL" class="radix-button"
+                title="Switch radix" aria-label="Switch radix"
+                data-name="CLEAR_F1_FULL" onclick="onRadixSwitch(this)">H</button>
+            <a class="headerlink" href="#CLEAR_F1_FULL" title="Permalink to this row"></a>
+        </td>
+    </tr>
+    <tr id="CLEAR_F0_FULL">
+        <td>[1]</td>
+        <td><a href="#CLEAR_F0_FULL.desc">CLEAR_F0_FULL</a></td>
+        <td>
+            <span title='Write-only'>w</span></td>
+        <td>0x0
+        </td>
+        <td>
+            <input id="_FieldValueTesterCLEAR_F0_FULL" class="field-value-tester"
+                type="text" autocomplete="off"
+                data-name="CLEAR_F0_FULL" oninput="onDecodedFieldInput(this)"/>
+        </td>
+        <td>Clear Status Fx Full</td>
+        <td>
+            <button type="button" id="_RadixButtonCLEAR_F0_FULL" class="radix-button"
+                title="Switch radix" aria-label="Switch radix"
+                data-name="CLEAR_F0_FULL" onclick="onRadixSwitch(this)">H</button>
+            <a class="headerlink" href="#CLEAR_F0_FULL" title="Permalink to this row"></a>
+        </td>
+    </tr>
     <tr id="RESET_WRITE_HEAD">
         <td>[0]</td>
         <td><a href="#RESET_WRITE_HEAD.desc">RESET_WRITE_HEAD</a></td>
         <td>
-            <span title='Write-only'>w</span>, <span title='Bitwise write 1 to set'>woset</span></td>
-        <td>-
+            <span title='Write-only'>w</span></td>
+        <td>0x0
         </td>
         <td>
             <input id="_FieldValueTesterRESET_WRITE_HEAD" class="field-value-tester"
@@ -67,6 +107,20 @@
     </label>
 </p>
 <hr/><h2>Field Descriptions</h2>
+
+<h3 id="CLEAR_F1_FULL.desc">CLEAR_F1_FULL - Clear Status Fx Full
+    <a class="headerlink" href="#CLEAR_F1_FULL.desc" title="Permalink to this headline"></a>
+</h3>
+<div id="_Content.CLEAR_F1_FULL.desc">
+<p>Resets the status Fx_FULL register</p>
+</div>
+
+<h3 id="CLEAR_F0_FULL.desc">CLEAR_F0_FULL - Clear Status Fx Full
+    <a class="headerlink" href="#CLEAR_F0_FULL.desc" title="Permalink to this headline"></a>
+</h3>
+<div id="_Content.CLEAR_F0_FULL.desc">
+<p>Resets the status Fx_FULL register</p>
+</div>
 
 <h3 id="RESET_WRITE_HEAD.desc">RESET_WRITE_HEAD - reset_write_head
     <a class="headerlink" href="#RESET_WRITE_HEAD.desc" title="Permalink to this headline"></a>
