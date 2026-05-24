@@ -91,6 +91,7 @@ generate_flist() {
         -t synthesis \
         -D VERILATOR=1 \
         -D COMMON_CELLS_ASSERTS_OFF=1 \
+        -D ASSERTS_OFF=1 \
         > croc.f"
 
     run_cmd "echo [INFO][Bender] Remove absolute paths"

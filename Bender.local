@@ -8,3 +8,5 @@ overrides:
   obi: { path: "rtl/obi" }
   riscv-dbg: { path: "rtl/riscv-dbg" }
   idma: { path: "rtl/idma" }
+  sdhci: { path: "rtl/sdhci" }
+  register_interface: { path: "rtl/register_interface" }

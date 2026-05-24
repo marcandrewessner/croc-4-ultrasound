@@ -199,6 +199,18 @@ vendor_package:
       - { from: 'Bender.yml', to: 'Bender.yml', patch_dir: '' }
 
 
+  ########################
+  # register interface   #
+  ########################
+  - name: register_interface
+    target_dir: rtl/register_interface
+    upstream: { git: "https://github.com/micha4w/register_interface.git", rev: "b699586fb2d57521552963031ca61768ad156113" }
+    patch_dir: "rtl/.patches/register_interface"
+    mapping:
+      - { from: 'include/', to: 'include/', patch_dir: 'include/' }
+      - { from: 'src/reg_intf.sv', to: 'src/reg_intf.sv', patch_dir: 'src/' }
+      - { from: 'vendor/lowrisc_opentitan/src/', to: 'vendor/lowrisc_opentitan/src/', patch_dir: 'vendor/' }
+
   #########
   # core  #
   #########

@@ -1,0 +1,21 @@
+# Copyright 2018 ETH Zurich and University of Bologna.
+# Solderpad Hardware License, Version 0.51, see LICENSE for details.
+# SPDX-License-Identifier: SHL-0.51
+
+package:
+  name: register_interface
+  authors:
+    - "Fabian Schuiki <fschuiki@iis.ee.ethz.ch>"
+    - "Florian Zaruba <zarubaf@iis.ee.ethz.ch>"
+
+export_include_dirs:
+  - include
+
+sources:
+  # Level 0
+  - src/reg_intf.sv
+  - vendor/lowrisc_opentitan/src/prim_subreg_arb.sv
+  - vendor/lowrisc_opentitan/src/prim_subreg_ext.sv
+  # Level 1
+  - vendor/lowrisc_opentitan/src/prim_subreg_shadow.sv
+  - vendor/lowrisc_opentitan/src/prim_subreg.sv

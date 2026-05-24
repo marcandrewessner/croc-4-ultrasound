@@ -6,15 +6,6 @@ packages:
       Path: rtl/apb
     dependencies:
     - common_cells
-  axi:
-    revision: a256a3b86394fedf19e361047fccfdd7f6ef83e4
-    version: 0.39.9
-    source:
-      Git: https://github.com/pulp-platform/axi.git
-    dependencies:
-    - common_cells
-    - common_verification
-    - tech_cells_generic
   common_cells:
     revision: null
     version: null
@@ -60,25 +51,12 @@ packages:
     dependencies:
     - common_cells
     - obi
-  opentitan_peripherals:
-    revision: cd3153de2783abd3d03d0595e6c4b32413c62f14
-    version: 0.4.0
-    source:
-      Git: https://github.com/pulp-platform/opentitan_peripherals.git
-    dependencies:
-    - common_cells
-    - register_interface
-    - tech_cells_generic
   register_interface:
-    revision: b699586fb2d57521552963031ca61768ad156113
+    revision: null
     version: null
     source:
-      Git: https://github.com/micha4w/register_interface.git
-    dependencies:
-    - apb
-    - axi
-    - common_cells
-    - common_verification
+      Path: rtl/register_interface
+    dependencies: []
   riscv-dbg:
     revision: null
     version: null
@@ -88,16 +66,14 @@ packages:
     - common_cells
     - tech_cells_generic
   sdhci:
-    revision: 980f23f5929d26cf9333989739a19473ae3010d7
+    revision: null
     version: null
     source:
-      Git: https://github.com/phsauter/sdhci.git
+      Path: rtl/sdhci
     dependencies:
-    - axi
     - common_cells
     - common_verification
     - obi
-    - opentitan_peripherals
     - register_interface
   tech_cells_generic:
     revision: null

@@ -1,0 +1,99 @@
+From 00120e6337707743c2f8fb20ed34b89064805e4b Mon Sep 17 00:00:00 2001
+From: Marc-Andre <mwessner@student.ethz.ch>
+Date: Sun, 24 May 2026 11:14:09 +0200
+Subject: [PATCH] sdhc patch
+
+---
+ Bender.yml | 54 ++++++++++++++++++++++++++----------------------------
+ 1 file changed, 26 insertions(+), 28 deletions(-)
+
+diff --git a/Bender.yml b/Bender.yml
+index f388121..7f057cd 100644
+--- a/Bender.yml
++++ b/Bender.yml
+@@ -10,56 +10,54 @@ package:
+     - "Axel Vanoni <axvanoni@student.ethz.ch>"
+ 
+ dependencies:
+-  axi:                      { git: "https://github.com/pulp-platform/axi.git",                    version: 0.39.8 }
+   common_cells:             { git: "https://github.com/pulp-platform/common_cells.git",           version: 1.38.0 }
+   common_verification:      { git: "https://github.com/pulp-platform/common_verification.git",    version: 0.2.3  }
+   obi:                      { git: "https://github.com/pulp-platform/obi",                        version: 0.1.7 }
+-  opentitan_peripherals:    { git: "https://github.com/pulp-platform/opentitan_peripherals.git",  version: 0.4.0  }
+-  register_interface:       { git: "https://github.com/micha4w/register_interface.git",     rev: "b699586fb2d57521552963031ca61768ad156113"  }
++  register_interface:       { git: "https://github.com/micha4w/register_interface.git",           rev: "b699586fb2d57521552963031ca61768ad156113" }
+ 
+ 
+ sources:
+   include_dirs:
+-  - hw/include
++  - include
+ 
+   files:
+   # Level 0 (packages)
+-  - hw/reg/sdhci_reg_pkg.sv
+-  - hw/sdhci_pkg.sv
++  - reg/sdhci_reg_pkg.sv
++  - sdhci_pkg.sv
+   # Level 1
+-  - hw/cmd_write/crc7_write.sv
+-  - hw/dat_read/crc16_read.sv
+-  - hw/dat_timeout.sv
+-  - hw/dat_write/crc16_write.sv
+-  - hw/par_ser_shift_reg.sv
+-  - hw/reg/sdhci_reg_logic.sv # sdhci_reg_pkg
+-  - hw/reg/sdhci_reg_top.sv # sdhci_reg_pkg
+-  - hw/rsp_read/crc7_read.sv
+-  - hw/sd_clk_generator.sv
+-  - hw/sdhci_debounce.sv
+-  - hw/sram_shift_reg.sv # tc_sram_impl
++  - cmd_write/crc7_write.sv
++  - dat_read/crc16_read.sv
++  - dat_timeout.sv
++  - dat_write/crc16_write.sv
++  - par_ser_shift_reg.sv
++  - reg/sdhci_reg_logic.sv # sdhci_reg_pkg
++  - reg/sdhci_reg_top.sv # sdhci_reg_pkg
++  - rsp_read/crc7_read.sv
++  - sd_clk_generator.sv
++  - sdhci_debounce.sv
++  - sram_shift_reg.sv # tc_sram_impl
+ 
+ 
+   # Level 2
+-  - hw/cmd_write/cmd_write.sv # par_ser_shift_reg, crc7_write, counter
+-  - hw/dat_buffer.sv # sram_shift_reg
+-  - hw/dat_read/dat_read.sv # crc16_read
+-  - hw/dat_write/dat_write.sv # crc16_write
+-  - hw/rsp_read/rsp_read.sv # crc7_read, counter
++  - cmd_write/cmd_write.sv # par_ser_shift_reg, crc7_write, counter
++  - dat_buffer.sv # sram_shift_reg
++  - dat_read/dat_read.sv # crc16_read
++  - dat_write/dat_write.sv # crc16_write
++  - rsp_read/rsp_read.sv # crc7_read, counter
+ 
+   # Level 3
+-  - hw/cmd_logic.sv # cmd_write, rsp_read, counter
+-  - hw/dat_wrap.sv # dat_read_timeout, dat_buffer, dat_read, dat_write
++  - cmd_logic.sv # cmd_write, rsp_read, counter
++  - dat_wrap.sv # dat_read_timeout, dat_buffer, dat_read, dat_write
+ 
+   # Level 4
+-  - hw/autocmd_wrap.sv # cmd_logic, dat_wrap
++  - autocmd_wrap.sv # cmd_logic, dat_wrap
+ 
+   # Level 5
+-  - hw/sdhci_top.sv # sdhci_reg_obi, sdhci_reg_logic, sd_clk_generator, cmd_wrap, dat_wrap
++  - sdhci_top.sv # sdhci_reg_obi, sdhci_reg_logic, sd_clk_generator, cmd_wrap, dat_wrap
+ 
+   # Level 6
+-  - hw/sdhci_obi_to_reg.sv # register_interface to OBI bridge
+-  - hw/sdhci_top_obi.sv # sdhci_top, external obi_pkg
++  - sdhci_obi_to_reg.sv # register_interface to OBI bridge
++  - sdhci_top_obi.sv # sdhci_top, external obi_pkg
+ 
+   - target: any(simulation, test)
+     files:
+-- 
+2.43.0
+
