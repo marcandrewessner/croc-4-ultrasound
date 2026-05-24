@@ -42,6 +42,15 @@ module tb_croc_soc #(
   logic        adc_valid_o;
   logic [13:0] adc_data_o;
 
+  // Signals into the SDCARD
+  logic       sdcard_clk_i;
+  logic       sdcard_cmd_en_i;
+  logic       sdcard_cmd_i;
+  logic       sdcard_cmd_o;
+  logic       sdcard_dat_en_i;
+  logic [3:0] sdcard_dat_i;
+  logic [3:0] sdcard_dat_o;
+
   /////////////////////////////
   //  Command Line Arguments //
   /////////////////////////////
@@ -116,7 +125,17 @@ module tb_croc_soc #(
     .gpio_i        ( gpio_in     ),
     .gpio_o        ( gpio_out    ),
     .gpio_out_en_o ( gpio_out_en ),
-    .adc_signals_i ( {adc_clk_o, adc_rst_no, adc_valid_o, adc_data_o} )
+    // adc interface
+    .adc_signals_i ( {adc_clk_o, adc_rst_no, adc_valid_o, adc_data_o} ),
+    // sdcard interface
+    .sd_clk_o    ( sdcard_clk_i ),
+    .sd_cd_ni    ( 0 ),
+    .sd_cmd_en_o ( sdcard_cmd_en_i ),
+    .sd_cmd_o    ( sdcard_cmd_i ),
+    .sd_cmd_i    ( sdcard_cmd_o ),
+    .sd_dat_i    ( sdcard_dat_o ),
+    .sd_dat_o    ( sdcard_dat_i ),
+    .sd_dat_en_o ( sdcard_dat_en_i )
   );
 
   /////////////////
@@ -189,6 +208,18 @@ module tb_croc_soc #(
     end
   end
 
+  //////////////////////////////////
+  //  SDCard model  //
+  //////////////////////////////////
+  sd_card i_sd_card (
+    .sd_clk_i ( sdcard_clk_i ),
+    .cmd_en_i ( sdcard_cmd_en_i ),
+    .cmd_i    ( sdcard_cmd_i ),
+    .cmd_o    ( sdcard_cmd_o ),
+    .dat_en_i ( sdcard_dat_en_i ),
+    .dat_i    ( sdcard_dat_i ),
+    .dat_o    ( sdcard_dat_o )
+  );
 
   ////////////////
   //  Waveform  //

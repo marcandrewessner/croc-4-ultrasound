@@ -27,7 +27,17 @@ module croc_soc import croc_pkg::*; #(
   output logic [GpioCount-1:0] gpio_o,        // Output to GPIO pins
   output logic [GpioCount-1:0] gpio_out_en_o, // Output enable signal; 0 -> input, 1 -> output
 
-  input logic [16:0] adc_signals_i            // Input from the ADCs
+  input logic [16:0] adc_signals_i,           // Input from the ADCs
+
+  // SDCard interface
+  output logic       sd_clk_o,
+  input  logic       sd_cd_ni,
+  output logic       sd_cmd_en_o,
+  output logic       sd_cmd_o,
+  input  logic       sd_cmd_i,
+  input  logic [3:0] sd_dat_i,
+  output logic [3:0] sd_dat_o,
+  output logic       sd_dat_en_o
 );
 
   logic synced_rst_n;
@@ -77,6 +87,15 @@ croc_domain #(
   .gpio_in_sync_o ( gpio_in_sync ),
 
   .adc_signals_i,
+
+  .sd_clk_o,
+  .sd_cd_ni,
+  .sd_cmd_en_o,
+  .sd_cmd_o,
+  .sd_cmd_i,
+  .sd_dat_i,
+  .sd_dat_o,
+  .sd_dat_en_o,
 
   .user_sbr_obi_req_o  ( user_sbr_obi_req ),
   .user_sbr_obi_rsp_i  ( user_sbr_obi_rsp ),

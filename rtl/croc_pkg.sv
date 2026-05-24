@@ -63,7 +63,7 @@ package croc_pkg;
 
   /// Address map data type
   typedef struct packed {
-      logic [ 3:0] idx;
+      logic [ 4:0] idx;
       logic [31:0] start_addr;
       logic [31:0] end_addr;
   } addr_map_rule_t;
@@ -78,17 +78,19 @@ package croc_pkg;
   localparam int unsigned NumXbarManagers = 4 + 1 + (iDMAEnable ? 2 : 0);
 
   /// Enum with crossbar subordinate idxs
-  typedef enum bit [3:0] {
+  typedef enum bit [4:0] {
     XbarError  = 0,
     XbarPeriph = 1,
     XbarUser   = 2,
-    XbarBank0  = 3
+    XbarSDHC   = 3,
+    XbarBank0  = 4
   } croc_xbar_outputs_e;
 
   /// Address map given to the main crossbar
-  localparam addr_map_rule_t [5:0] CrocAddrMap = '{
+  localparam addr_map_rule_t [6:0] CrocAddrMap = '{
     '{ idx: XbarPeriph,  start_addr: 32'h0000_0000, end_addr: 32'h1000_0000 },
     '{ idx: XbarUser,    start_addr: 32'h2000_0000, end_addr: 32'h8000_0000 },
+    '{ idx: XbarSDHC,    start_addr: 32'h1001_0000, end_addr: 32'h1001_4000 }, // SDHC
     '{ idx: XbarBank0,   start_addr: 32'h1000_0000, end_addr: 32'h1000_0800 }, // instruction
     '{ idx: XbarBank0+1, start_addr: 32'h1000_0800, end_addr: 32'h1000_1000 }, // data
     '{ idx: XbarBank0+2, start_addr: 32'h1000_1000, end_addr: 32'h1000_1800 }, // ADC ACQ Bank 0

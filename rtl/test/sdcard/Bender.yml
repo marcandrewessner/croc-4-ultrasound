@@ -1,0 +1,24 @@
+# Copyright 2022 ETH Zurich and University of Bologna.
+# Solderpad Hardware License, Version 0.51, see LICENSE for details.
+# SPDX-License-Identifier: SHL-0.51
+
+package:
+  name: sdhci_sim
+  authors:
+    - "Anton Buchner <abuchner@student.ethz.ch>"
+    - "Micha Wehrli <miwehrli@student.ethz.ch>"
+    - "Axel Vanoni <axvanoni@student.ethz.ch>"
+
+dependencies:
+  sdhci: { git: "https://github.com/phsauter/sdhci.git", rev: 980f23f }
+
+sources:
+  - target: any(simulation, verilator)
+    files:
+      # Level 0
+      - model/sd_crc_7.v
+      - model/sd_crc_16.v
+      # Level 1
+      - model/sdModel.v       # sd_crc_7, sd_crc_16
+      # Level 2
+      - model/sd_card.sv      # sdModel

@@ -1,0 +1,4330 @@
+From 160c2b83e2f022a80935f9f504264116a94ab723 Mon Sep 17 00:00:00 2001
+From: Marc-Andre <mwessner@student.ethz.ch>
+Date: Sun, 24 May 2026 16:01:41 +0200
+Subject: [PATCH] reduce to sdcard model, post make
+
+---
+ Bender.yml                     |  24 +
+ model/.gitignore               |   4 -
+ model/sdModel.v                | 944 +++++++++++++++++++++++++++++++++
+ model/sd_crc_16.v              |  43 ++
+ model/sd_crc_7.v               |  34 ++
+ sim.mk                         |  44 --
+ src/.gitignore                 |   2 -
+ src/sdhci_fixture.sv           |  83 ---
+ src/sdhci_obi_driver.sv        | 267 ----------
+ src/sdhci_sd_driver.sv         | 318 -----------
+ src/sdhci_vip.sv               | 107 ----
+ src/tb_acmd12_errorhandling.sv | 265 ---------
+ src/tb_acmd12_interrupts.sv    | 224 --------
+ src/tb_block_read.sv           | 382 -------------
+ src/tb_cmd_timeout.sv          | 234 --------
+ src/tb_dat.sv                  | 254 ---------
+ src/tb_dat_buffer_sizes.sv     | 388 --------------
+ src/tb_dat_timeout.sv          | 224 --------
+ src/tb_driver_crc.sv           |  72 ---
+ src/tb_reg_reset.sv            | 189 -------
+ verilator/Makefile             |  45 --
+ 21 files changed, 1045 insertions(+), 3102 deletions(-)
+ create mode 100644 target/sim/Bender.yml
+ delete mode 100644 target/sim/model/.gitignore
+ create mode 100644 target/sim/model/sdModel.v
+ create mode 100644 target/sim/model/sd_crc_16.v
+ create mode 100644 target/sim/model/sd_crc_7.v
+ delete mode 100644 target/sim/sim.mk
+ delete mode 100644 target/sim/src/.gitignore
+ delete mode 100644 target/sim/src/sdhci_fixture.sv
+ delete mode 100644 target/sim/src/sdhci_obi_driver.sv
+ delete mode 100644 target/sim/src/sdhci_sd_driver.sv
+ delete mode 100644 target/sim/src/sdhci_vip.sv
+ delete mode 100644 target/sim/src/tb_acmd12_errorhandling.sv
+ delete mode 100644 target/sim/src/tb_acmd12_interrupts.sv
+ delete mode 100644 target/sim/src/tb_block_read.sv
+ delete mode 100644 target/sim/src/tb_cmd_timeout.sv
+ delete mode 100644 target/sim/src/tb_dat.sv
+ delete mode 100644 target/sim/src/tb_dat_buffer_sizes.sv
+ delete mode 100644 target/sim/src/tb_dat_timeout.sv
+ delete mode 100644 target/sim/src/tb_driver_crc.sv
+ delete mode 100644 target/sim/src/tb_reg_reset.sv
+ delete mode 100644 target/sim/verilator/Makefile
+
+diff --git a/Bender.yml b/Bender.yml
+new file mode 100644
+index 0000000..84da054
+--- /dev/null
++++ b/Bender.yml
+@@ -0,0 +1,24 @@
++# Copyright 2022 ETH Zurich and University of Bologna.
++# Solderpad Hardware License, Version 0.51, see LICENSE for details.
++# SPDX-License-Identifier: SHL-0.51
++
++package:
++  name: sdhci_sim
++  authors:
++    - "Anton Buchner <abuchner@student.ethz.ch>"
++    - "Micha Wehrli <miwehrli@student.ethz.ch>"
++    - "Axel Vanoni <axvanoni@student.ethz.ch>"
++
++dependencies:
++  sdhci: { git: "https://github.com/phsauter/sdhci.git", rev: 980f23f }
++
++sources:
++  - target: any(simulation, verilator)
++    files:
++      # Level 0
++      - model/sd_crc_7.v
++      - model/sd_crc_16.v
++      # Level 1
++      - model/sdModel.v       # sd_crc_7, sd_crc_16
++      # Level 2
++      - model/sd_card.sv      # sdModel
+diff --git a/model/.gitignore b/model/.gitignore
+deleted file mode 100644
+index b847034..0000000
+--- a/model/.gitignore
++++ /dev/null
+@@ -1,4 +0,0 @@
+-*.*
+-*
+-!.gitignore
+-!sd_card.sv
+diff --git a/model/sdModel.v b/model/sdModel.v
+new file mode 100644
+index 0000000..42ece76
+--- /dev/null
++++ b/model/sdModel.v
+@@ -0,0 +1,944 @@
++//////////////////////////////////////////////////////////////////////
++////                                                              ////
++////  sdModel.v                                                   ////
++////                                                              ////
++////  This file is part of the SD Card IP core project            ////
++////  http://www.opencores.org/                                   ////
++////  ?do=project&who=sdcard_mass_storage_controller              ////
++////                                                              ////
++////  Author(s):                                                  ////
++////      - Adam Edvardsson (adam.edvardsson@orsoc.se)            ////
++////                                                              ////
++//////////////////////////////////////////////////////////////////////
++////                                                              ////
++//// Copyright (C) 2009 Authors                                   ////
++////                                                              ////
++//// This source file may be used and distributed without         ////
++//// restriction provided that this copyright statement is not    ////
++//// removed from the file and that any derivative work contains  ////
++//// the original copyright notice and the associated disclaimer. ////
++////                                                              ////
++//// This source file is free software; you can redistribute it   ////
++//// and/or modify it under the terms of the GNU Lesser General   ////
++//// Public License as published by the Free Software Foundation; ////
++//// either version 2.1 of the License, or (at your option) any   ////
++//// later version.                                               ////
++////                                                              ////
++//// This source is distributed in the hope that it will be       ////
++//// useful, but WITHOUT ANY WARRANTY; without even the implied   ////
++//// warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR      ////
++//// PURPOSE.  See the GNU Lesser General Public License for more ////
++//// details.                                                     ////
++////                                                              ////
++//// You should have received a copy of the GNU Lesser General    ////
++//// Public License along with this source; if not, download it   ////
++//// from http://www.opencores.org/lgpl.shtml                     ////
++////                                                              ////
++//////////////////////////////////////////////////////////////////////
++
++// You can define SD_MODEL_INITIALIZED which will make the card selected with RCA 1
++
++`define CRC_OFF 19
++`define BIT_CRC_CYCLE 16
++
++`define tIH 0 //Input hold time
++`define DLY_TO_OUTP 0
++
++`define MEMSIZE 24643590 // 2mb block
++`define TIME_BUSY 63
++
++`define PRG 7   // 111
++`define RCV 6   // 110
++`define DATAS 5 // 101
++`define TRAN 4  // 100
++module sdModel (
++    input sdClk,
++    inout tri cmd,
++    inout tri [3:0] dat
++);
++
++  reg oeCmd;
++  reg oeDat;
++  reg cmdOut;
++  reg [3:0] datOut;
++  reg [10:0] transf_cnt;
++
++  reg [5:0] lastCMD;
++  reg cardIdentificationState;
++  reg CardTransferActive;
++  reg [2:0] BusWidth;
++
++  assign cmd = oeCmd ? cmdOut : 1'bz;
++  assign dat = oeDat ? datOut : 4'bz;
++
++  reg InbuffStatus;
++  reg [31:0] BlockAddr;
++  reg [7:0] Inbuff[0:511];
++  reg [7:0] FLASHmem[0:`MEMSIZE];
++
++  reg [46:0] inCmd;
++  reg [5:0] cmdRead;
++  reg [7:0] cmdWrite;
++  reg crcIn;
++  reg crcEn;
++  reg crcRst;
++  reg [31:0] CardStatus;
++  reg [15:0] RCA;
++  reg [31:0] OCR;
++  reg [120:0] CID;
++  reg [120:0] CSD;
++  reg [7:0][7:0] SCR;
++  reg Busy;  //0 when busy
++  wire [6:0] crcOut;
++  reg [4:0] crc_c;
++
++  reg [10:0] blockSize;
++  reg [11:0] bitBlockRec;
++  reg [11:0] bitBlock;
++  reg doingACMD51;
++
++  assign bitBlockRec = doingACMD51 ? 16 : blockSize * 2;
++  assign bitBlock = bitBlockRec + `CRC_OFF + 1;
++
++
++  reg [3:0] CurrentState;
++  reg [3:0] DataCurrentState;
++`ifdef SD_MODEL_INITIALIZED
++  // `define STATUSSTART (32'h0 | (`TRAN << 9) | (1 << 8))
++  `define STATUSSTART (32'h0 | (`TRAN << 9))
++  `define RCASTART 16'h0001
++`else
++  `define STATUSSTART 32'h0
++  `define RCASTART 16'h2000
++`endif
++  `define OCRSTART 32'h40ff8000 //high capacity card, support 2.7-3.6V
++  `define CIDSTART 120'h1b534d534d49202010025166450082  //Just some random data not really usefull anyway
++  `define CSDSTART 120'h400000000000900080000000000000  // Advertises sector size 512
++  `define SCRSTART 64'h0000000000000400 // Buswidth = 4
++
++  `define outDelay 4
++
++  reg [2:0] outDelayCnt;
++  reg [9:0] flash_write_cnt;
++  reg [8:0] flash_blockwrite_cnt;
++
++  parameter okcrctoken = 4'b0101;
++  parameter invalidcrctoken = 4'b1111;
++
++`ifdef SYSTEMVERILOG
++  typedef enum logic [1:0] {
++    IDLE,
++    READ_CMD,
++    ANALYZE_CMD,
++    SEND_CMD
++  } state_e;
++  state_e state;
++  state_e next_state;
++
++  typedef enum logic [2:0] {
++    DATA_IDLE,
++    READ_WAITS,
++    READ_DATA,
++    WRITE_FLASH,
++    WRITE_DATA
++  } data_state_e;
++  data_state_e dataState;
++  data_state_e next_datastate;
++`else
++  parameter SIZE = 10;
++  parameter
++    IDLE        = 10'b0000_0000_01,
++    READ_CMD    = 10'b0000_0000_10,
++    ANALYZE_CMD = 10'b0000_0001_00,
++    SEND_CMD    = 10'b0000_0010_00;
++  reg [SIZE-1:0] state;
++  reg [SIZE-1:0] next_state;
++
++  parameter
++    DATA_IDLE   = 10'b0000_0000_01,
++    READ_WAITS  = 10'b0000_0000_10,
++    READ_DATA   = 10'b0000_0001_00,
++    WRITE_FLASH = 10'b0000_0010_00,
++    WRITE_DATA  = 10'b0000_0100_00;
++  reg [SIZE-1:0] dataState;
++  reg [SIZE-1:0] next_datastate;
++`endif
++
++  reg ValidCmd;
++  reg inValidCmd;
++
++  reg [7:0] response_S;
++  reg [135:0] response_CMD;
++  integer responseType;
++
++  reg [9:0] block_cnt;
++  reg wptr;
++  reg crc_ok;
++  reg [3:0] last_din;
++
++  reg crcDat_rst;
++  reg mult_read;
++  reg mult_write;
++  reg crcDat_en;
++  reg [3:0] crcDat_in;
++  wire [15:0] crcDat_out[3:0];
++
++  genvar i;
++  generate
++    for (i = 0; i < 4; i = i + 1) begin : CRC_16_gen
++      sd_crc_16 CRC_16_i (
++          crcDat_in[i],
++          crcDat_en,
++          sdClk,
++          crcDat_rst,
++          crcDat_out[i]
++      );
++    end
++  endgenerate
++  sd_crc_7 crc_7 (
++      crcIn,
++      crcEn,
++      sdClk,
++      crcRst,
++      crcOut
++  );
++
++  reg stop;
++
++  reg appendCrc;
++  reg [5:0] startUppCnt;
++
++  reg q_start_bit;
++  //Card initinCMd
++  initial $readmemh("../bin/ramdisk2.hex", FLASHmem);
++
++  //integer k;
++  //initial begin
++  //	$display("Contents of Mem after reading data file:");
++  //	for (k=0; k<512; k=k+1) $display("%d:%h",k,FLASHmem[k]);
++  //end
++  reg qCmd;
++  reg [2:0] crcCnt;
++
++  reg add_wrong_cmd_crc;
++  reg add_wrong_cmd_indx;
++  reg add_wrong_data_crc;
++
++  initial begin
++    add_wrong_data_crc <= 0;
++    add_wrong_cmd_indx <= 0;
++    add_wrong_cmd_crc <= 0;
++    stop <= 1;
++    cardIdentificationState <= 1;
++    state <= IDLE;
++    dataState <= DATA_IDLE;
++    Busy <= 0;
++    oeCmd <= 0;
++    crcCnt <= 0;
++`ifdef SD_MODEL_INITIALIZED
++    CardTransferActive <= 1;
++`else
++    CardTransferActive <= 0;
++`endif
++    qCmd <= 1;
++    oeDat <= 0;
++    cmdOut <= 0;
++    cmdWrite <= 0;
++    InbuffStatus <= 0;
++    datOut <= 0;
++    inCmd <= 0;
++    BusWidth <= 1;
++    responseType = 0;
++    mult_read = 0;
++    mult_write = 0;
++    doingACMD51 = 0;
++    crcIn <= 0;
++    response_S <= 0;
++    crcEn <= 0;
++    crcRst <= 0;
++    cmdRead <= 0;
++    ValidCmd <= 0;
++    inValidCmd = 0;
++    appendCrc <= 0;
++    RCA <= `RCASTART;
++    OCR <= `OCRSTART;
++    CardStatus <= `STATUSSTART;
++    CID <= `CIDSTART;
++    CSD <= `CSDSTART;
++    SCR <= `SCRSTART;
++    response_CMD <= 0;
++    outDelayCnt <= 0;
++    crcDat_rst <= 1;
++    crcDat_en <= 0;
++    crcDat_in <= 0;
++    transf_cnt <= 0;
++    BlockAddr <= 0;
++    block_cnt <= 0;
++    wptr <= 0;
++    transf_cnt <= 0;
++    crcDat_rst <= 1;
++    crcDat_en <= 0;
++    crcDat_in <= 0;
++    flash_write_cnt <= 0;
++    startUppCnt <= 0;
++    flash_blockwrite_cnt <= 0;
++  end
++
++  //CARD logic
++
++  always @ (state or cmd or cmdRead or ValidCmd or inValidCmd or cmdWrite or outDelayCnt)
++  begin : FSM_COMBO
++    next_state = IDLE;
++    case (state)
++      IDLE: begin
++        if (!cmd) next_state = READ_CMD;
++        else next_state = IDLE;
++      end
++      READ_CMD: begin
++        if (cmdRead >= 46) next_state = ANALYZE_CMD;
++        else next_state = READ_CMD;
++      end
++      ANALYZE_CMD: begin
++        if ((ValidCmd) && (outDelayCnt >= `outDelay)) next_state = SEND_CMD;
++        else if (inValidCmd) next_state = IDLE;
++        else next_state = ANALYZE_CMD;
++      end
++      SEND_CMD: begin
++        if (cmdWrite >= response_S) next_state = IDLE;
++        else next_state = SEND_CMD;
++
++      end
++
++    endcase
++  end
++
++  always @ (dataState or CardStatus or crc_c or flash_write_cnt or dat[0] or stop or transf_cnt)
++  begin : FSM_COMBODAT
++    next_datastate = DATA_IDLE;
++    case (dataState)
++      DATA_IDLE: begin
++        if ((CardStatus[12:9] == `RCV) || (mult_write == 1'b1)) next_datastate = READ_WAITS;
++        else if ((CardStatus[12:9] == `DATAS) || (mult_read == 1'b1)) next_datastate = WRITE_DATA;
++        else next_datastate = DATA_IDLE;
++      end
++
++      READ_WAITS: begin
++        if (dat[0] == 1'b0) next_datastate = READ_DATA;
++        else if (stop == 1'b0) next_datastate = READ_WAITS;
++        else next_datastate = DATA_IDLE;
++      end
++
++      READ_DATA: begin
++        if (crc_c == 0) next_datastate = WRITE_FLASH;
++        else begin
++          if (stop == 1'b0) next_datastate = READ_DATA;
++          else next_datastate = DATA_IDLE;
++        end
++
++      end
++      WRITE_FLASH: begin
++        if (flash_write_cnt > 265) next_datastate = DATA_IDLE;
++        else next_datastate = WRITE_FLASH;
++      end
++
++      WRITE_DATA: begin
++        if (transf_cnt >= bitBlock) next_datastate = DATA_IDLE;
++        else begin
++          if (stop == 1'b0) next_datastate = WRITE_DATA;
++          else next_datastate = DATA_IDLE;
++        end
++      end
++
++    endcase
++  end
++
++  always @(posedge sdClk) begin
++    q_start_bit <= dat[0];
++  end
++
++  always @(posedge sdClk) begin : FSM_SEQ
++    state <= next_state;
++  end
++
++  always @(posedge sdClk) begin : FSM_SEQDAT
++    dataState <= next_datastate;
++  end
++
++  always @(posedge sdClk) begin
++    if (CardTransferActive) begin
++      if (InbuffStatus == 0)  //empty
++        CardStatus[8] <= 1;
++      else CardStatus[8] <= 0;
++    end else CardStatus[8] <= 1;
++
++    startUppCnt <= startUppCnt + 1;
++    OCR[31] <= Busy; //Used to be wrong
++    if (startUppCnt == `TIME_BUSY) Busy <= 1;
++  end
++
++  always @(posedge sdClk) begin
++    qCmd <= cmd;
++  end
++
++  //read data and cmd on rising edge
++  always @(posedge sdClk) begin
++    case (state)
++      IDLE: begin
++        //mult_write <= 0;
++        //mult_read <=0;
++        crcIn <= 0;
++        crcEn <= 0;
++        crcRst <= 1;
++        oeCmd <= 0;
++        stop <= 0;
++        cmdRead <= 0;
++        appendCrc <= 0;
++        ValidCmd <= 0;
++        inValidCmd = 0;
++        cmdWrite <= 0;
++        crcCnt <= 0;
++        response_CMD <= 0;
++        response_S <= 0;
++        outDelayCnt <= 0;
++        responseType = 0;
++      end
++      READ_CMD: begin  //read cmd
++        crcEn <= 1;
++        crcRst <= 0;
++        crcIn <= #`tIH qCmd;
++        inCmd[47-cmdRead] <= #`tIH qCmd;
++        cmdRead <= #1 cmdRead + 1;
++        if (cmdRead >= 40) crcEn <= 0;
++      end
++
++      ANALYZE_CMD: begin  //check for valid cmd
++        //Wrong CRC go idle
++        if (inCmd[46] == 0) //direction bit wrong
++          inValidCmd = 1;
++        else if (inCmd[7:1] != crcOut) begin
++          inValidCmd = 1;
++          $fdisplay(sdModel_file_desc, "**sd_Model Commando CRC Error");
++          $display(sdModel_file_desc, "**sd_Model Commando CRC Error");
++        end else if (qCmd != 1) begin  //stop
++          inValidCmd = 1;
++          $fdisplay(sdModel_file_desc, "**sd_Model Commando No Stop Bit Error");
++          $display(sdModel_file_desc, "**sd_Model Commando No Stop Bit Error");
++        end else begin
++          if (outDelayCnt == 0) CardStatus[3] <= 0;
++          case (inCmd[45:40])
++            0:  response_S <= 0;
++            2:  response_S <= 136;
++            3:  response_S <= 48;
++            7:  response_S <= 48;
++            9:  response_S <= 136;
++            12: response_S <= 48;
++            13: response_S <= 48;
++            14: response_S <= 0;
++            16: response_S <= 48;
++            17: response_S <= 48;
++            18: response_S <= 48;
++            24: response_S <= 48;
++            25: response_S <= 48;
++            33: response_S <= 48;
++            55: response_S <= 48;
++            41: response_S <= 48;
++            51: response_S <= 48;
++          endcase
++          case (inCmd[45:40])
++            0: begin
++              response_CMD <= 0;
++              cardIdentificationState <= 1;
++              ResetCard;
++            end
++            2: begin
++              if (lastCMD != 41 && outDelayCnt == 0) begin
++                $fdisplay(sdModel_file_desc,
++                          "**Error in sequnce, ACMD 41 should precede 2 in Startup state");
++                //$display(sdModel_file_desc, "**Error in sequnce, ACMD 41 should precede 2 in Startup state") ;
++                CardStatus[3] <= 1;
++              end
++              response_CMD[127:8] <= CID;
++              appendCrc <= 0;
++              responseType = 2;
++              CardStatus[12:9] <= 2;
++            end
++            3: begin
++              if (lastCMD != 2 && outDelayCnt == 0) begin
++                $fdisplay(sdModel_file_desc,
++                          "**Error in sequnce, CMD 2 should precede 3 in Startup state");
++                //$display(sdModel_file_desc, "**Error in sequnce, CMD 2 should precede 3 in Startup state") ;
++                CardStatus[3] <= 1;
++              end
++              response_CMD[127:112] <= RCA[15:0];
++              response_CMD[111:96] <= CardStatus[15:0];
++              appendCrc <= 1;
++              CardStatus[12:9] <= 3;
++              cardIdentificationState <= 0;
++            end
++            6: begin
++              if (lastCMD == 55 && outDelayCnt == 0) begin
++                if (inCmd[9:8] == 2'b10) begin
++                  BusWidth <= 4;
++                  $display(sdModel_file_desc, "**BUS WIDTH 4 ");
++                end else BusWidth <= 1;
++
++                response_S <= 48;
++                response_CMD[127:96] <= CardStatus;
++              end else if (outDelayCnt == 0) begin
++                response_CMD <= 0;
++                response_S   <= 0;
++                $fdisplay(sdModel_file_desc, "**Error Invalid CMD, %h", inCmd[45:40]);
++                //  $display(sdModel_file_desc, "**Error Invalid CMD, %h",inCmd[45:40]) ;
++              end
++            end
++            7: begin
++              if (outDelayCnt == 0) begin
++                if (inCmd[39:24] == RCA[15:0]) begin
++                  CardTransferActive <= 1;
++                  response_CMD[127:96] <= CardStatus;
++                  CardStatus[12:9] <= `TRAN;
++                end else begin
++                  CardTransferActive <= 0;
++                  response_CMD[127:96] <= CardStatus;
++                  CardStatus[12:9] <= 3;
++                end
++              end
++            end
++            8: begin
++              if (inCmd[19:16] != 4'b0001) begin  //voltage not 2.7-3.6V
++                response_S = 0;  //no response if unssuported voltage range
++                $fdisplay(sdModel_file_desc, "**Error CMD8: unsupported voltage range %h",
++                          inCmd[19:16]);
++              end else begin
++                response_S = 48;
++                response_CMD[103:96]  <= inCmd[15:8];  //echo check pattern
++                response_CMD[107:104] <= 4'b0001;  //voltage accepted
++              end
++            end
++
++            9: begin
++              response_CMD[127:8] <= CSD;
++              appendCrc <= 0;
++              CardStatus[12:9] <= 2;
++            end
++
++            12: begin
++              response_CMD[127:96] <= CardStatus;
++              stop <= 1;
++              mult_write <= 0;
++              mult_read <= 0;
++              doingACMD51 <= 0;
++              CardStatus[12:9] <= `TRAN;
++            end
++
++            13: begin
++              response_CMD[127:96] <= CardStatus;
++            end
++
++            16: begin
++              response_CMD[127:96] <= CardStatus;
++              if (CardTransferActive) begin
++                blockSize <= inCmd[39:8];
++              end
++            end
++
++            17: begin
++              if (outDelayCnt == 0) begin
++                if (CardStatus[12:9] == `TRAN) begin  //If card is in transferstate
++                  CardStatus[12:9] <= `DATAS;  //Put card in data state
++                  response_CMD[127:96] <= CardStatus;
++                  BlockAddr = inCmd[39:8];
++                  if (BlockAddr % 512 != 0) $display("**Block Misalign Error");
++                end else begin
++                  response_S <= 0;
++                  response_CMD[127:96] <= 0;
++                end
++              end
++
++            end
++
++            18: begin
++              if (outDelayCnt == 0) begin
++                if (CardStatus[12:9] == `TRAN) begin  //If card is in transferstate
++                  CardStatus[12:9] <= `DATAS;  //Put card in data state
++                  response_CMD[127:96] <= CardStatus;
++                  mult_read <= 1;
++                  BlockAddr = inCmd[39:8];
++                  if (BlockAddr % 512 != 0) $display("**Block Misalign Error");
++                end else begin
++                  response_S <= 0;
++                  response_CMD[127:96] <= 0;
++
++                end
++              end
++
++            end
++
++            24: begin
++              if (outDelayCnt == 0) begin
++                if (CardStatus[12:9] == `TRAN) begin  //If card is in transferstate
++                  if (CardStatus[8]) begin  //If Free write buffer
++                    CardStatus[12:9] <= `RCV;  //Put card in Rcv state
++                    response_CMD[127:96] <= CardStatus;
++                    BlockAddr = inCmd[39:8];
++                    if (BlockAddr % 512 != 0) $display("**Block Misalign Error");
++                  end else begin
++                    response_CMD[127:96] <= CardStatus;
++                    $fdisplay(sdModel_file_desc,
++                              "**Error Try to blockwrite when No Free Writebuffer");
++                    $display("**Error Try to blockwrite when No Free Writebuffer");
++                  end
++                end else begin
++                  response_S <= 0;
++                  response_CMD[127:96] <= 0;
++                end
++              end
++            end
++            25: begin
++              if (outDelayCnt == 0) begin
++                if (CardStatus[12:9] == `TRAN) begin  //If card is in transferstate
++                  if (CardStatus[8]) begin  //If Free write buffer
++                    CardStatus[12:9] <= `RCV;  //Put card in Rcv state
++                    response_CMD[127:96] <= CardStatus;
++                    BlockAddr = inCmd[39:8];
++                    mult_write <= 1;
++                    if (BlockAddr % 512 != 0) $display("**Block Misalign Error");
++                  end else begin
++                    response_CMD[127:96] <= CardStatus;
++                    $fdisplay(sdModel_file_desc,
++                              "**Error Try to blockwrite when No Free Writebuffer");
++                    $display("**Error Try to blockwrite when No Free Writebuffer");
++                  end
++                end else begin
++                  response_S <= 0;
++                  response_CMD[127:96] <= 0;
++                end
++              end
++            end
++
++            33: response_CMD[127:96] <= 48;
++            55: begin
++              response_CMD[127:96] <= CardStatus;
++              CardStatus[5]        <= 1;  //Next CMD is AP specific CMD
++              appendCrc            <= 1;
++            end
++            41: begin
++              if (cardIdentificationState) begin
++                if (lastCMD != 55 && outDelayCnt == 0) begin
++                  $fdisplay(sdModel_file_desc,
++                            "**Error in sequnce, CMD 55 should precede 41 in Startup state");
++                  $display("**Error in sequnce, CMD 55 should precede 41 in Startup state");
++                  CardStatus[3] <= 1;
++                end else begin
++                  responseType = 3;
++                  response_CMD[127:96] <= OCR;
++                  appendCrc <= 0;
++                  CardStatus[5] <= 0;
++                  if (Busy == 1) CardStatus[12:9] <= 1;
++                end
++              end
++            end
++
++            51: begin
++              if (lastCMD != 55 && outDelayCnt==0) begin
++                $fdisplay(sdModel_file_desc, "**Error in sequnce, CMD 55 should precede 51") ;
++                $display( "**Error in sequnce, CMD 55 should precede 51") ;
++                CardStatus[3]<=1;
++              end else begin
++                doingACMD51 <= 1;
++                CardStatus[12:9] <= `DATAS;  //Put card in data state
++                response_CMD[127:96] <= CardStatus;
++              end
++            end
++          endcase
++          ValidCmd <= 1;
++          crcIn <= 0;
++
++          outDelayCnt <= outDelayCnt + 1;
++          if (outDelayCnt == `outDelay) crcRst <= 1;
++          oeCmd <= 1;
++          cmdOut <= 1;
++          response_CMD[135:134] <= 0;
++
++          if (responseType != 3 && responseType != 2)
++            if (!add_wrong_cmd_indx) response_CMD[133:128] <= inCmd[45:40];
++            else response_CMD[133:128] <= 0;
++          else response_CMD[133:128] <= 6'b111111;
++
++          lastCMD <= inCmd[45:40];
++        end
++      end
++
++    endcase
++  end
++
++  always @(negedge sdClk) begin
++    case (state)
++
++      SEND_CMD: begin
++        crcRst <= 0;
++        crcEn <= 1;
++        cmdWrite <= cmdWrite + 1;
++        if (response_S != 0) cmdOut <= 0;
++        else cmdOut <= 1;
++
++        if ((cmdWrite > 0) && (cmdWrite < response_S - 8)) begin
++          cmdOut <= response_CMD[135-cmdWrite];
++          crcIn  <= response_CMD[134-cmdWrite];
++          if (response_S == 136) crcEn <= (cmdWrite >= 7);
++          if (cmdWrite >= response_S - 9) crcEn <= 0;
++        end else if (cmdWrite != 0) begin
++          crcEn <= 0;
++          if (add_wrong_cmd_crc) begin
++            cmdOut <= 0;
++            crcCnt <= crcCnt + 1;
++          end else begin
++            cmdOut <= crcOut[6-crcCnt];
++            crcCnt <= crcCnt + 1;
++            if (responseType == 3) cmdOut <= 1;
++          end
++        end
++        if (cmdWrite == response_S - 1) cmdOut <= 1;
++
++      end
++    endcase
++  end
++
++  integer outdly_cnt;
++
++  always @(posedge sdClk) begin
++    case (dataState)
++      DATA_IDLE: begin
++        oeDat <= 0;
++
++        crcDat_rst <= 1;
++        crcDat_en  <= 0;
++        crcDat_in  <= 0;
++
++        doingACMD51 <= 0;
++      end
++
++      READ_WAITS: begin
++        oeDat <= 0;
++        crcDat_rst <= 0;
++        crcDat_en <= 1;
++        crcDat_in <= 0;
++        crc_c <= 15;  //
++        crc_ok <= 1;
++      end
++      READ_DATA: begin
++        InbuffStatus <= 1;
++        if (transf_cnt < bitBlockRec) begin
++          if (wptr) Inbuff[block_cnt][3:0] <= dat;
++          else Inbuff[block_cnt][7:4] <= dat;
++
++          if (!add_wrong_data_crc) crcDat_in <= dat;
++          else crcDat_in <= 4'b1010;
++
++          crc_ok <= 1;
++          transf_cnt <= transf_cnt + 1;
++          if (wptr) block_cnt <= block_cnt + 1;
++          wptr <= ~wptr;
++
++        end else if (transf_cnt <= (bitBlockRec + `BIT_CRC_CYCLE - 1)) begin
++          transf_cnt <= transf_cnt + 1;
++          crcDat_en  <= 0;
++          last_din   <= dat;
++
++          if (transf_cnt > bitBlockRec) begin
++            crc_c <= crc_c - 1;
++
++            if (crcDat_out[0][crc_c] != last_din[0]) crc_ok <= 0;
++            if (crcDat_out[1][crc_c] != last_din[1]) crc_ok <= 0;
++            if (crcDat_out[2][crc_c] != last_din[2]) crc_ok <= 0;
++            if (crcDat_out[3][crc_c] != last_din[3]) crc_ok <= 0;
++          end
++        end
++      end
++      WRITE_FLASH: begin
++        oeDat <= 1;
++        block_cnt <= 0;
++        wptr <= 0;
++        transf_cnt <= 0;
++        crcDat_rst <= 1;
++        crcDat_en <= 0;
++        crcDat_in <= 0;
++      end
++
++    endcase
++
++  end
++
++  reg data_send_index;
++  integer write_out_index;
++  always @(negedge sdClk) begin
++    case (dataState)
++      DATA_IDLE: begin
++        write_out_index <= 0;
++        transf_cnt <= 0;
++        data_send_index <= 0;
++        outdly_cnt <= 0;
++        flash_write_cnt <= 0;
++      end
++
++      WRITE_DATA: begin
++        oeDat <= 1;
++        outdly_cnt <= outdly_cnt + 1;
++
++        if (outdly_cnt > `DLY_TO_OUTP) begin
++          transf_cnt <= transf_cnt + 1;
++          crcDat_en  <= 1;
++          crcDat_rst <= 0;
++
++        end else begin
++          crcDat_en <= 0;
++          crcDat_rst <= 1;
++          crc_c <= 16;
++        end
++        if (transf_cnt == 0) begin
++          oeDat <= 0;
++        end
++
++        if (transf_cnt == 1) begin
++          last_din  <= (doingACMD51 ? SCR[write_out_index][7:4] : FLASHmem[BlockAddr+(write_out_index)][7:4]);
++          crcDat_in <= (doingACMD51 ? SCR[write_out_index][7:4] : FLASHmem[BlockAddr+(write_out_index)][7:4]);
++
++          datOut <= 0;
++          data_send_index <= 1;
++        end else if ((transf_cnt >= 2) && (transf_cnt <= bitBlockRec + 1)) begin
++          data_send_index <= ~data_send_index;
++          if (!data_send_index) begin
++            last_din  <= (doingACMD51 ? SCR[write_out_index][7:4] : FLASHmem[BlockAddr+(write_out_index)][7:4]);
++            crcDat_in <= (doingACMD51 ? SCR[write_out_index][7:4] : FLASHmem[BlockAddr+(write_out_index)][7:4]);
++          end else begin
++            last_din <= (doingACMD51 ? SCR[write_out_index][3:0] : FLASHmem[BlockAddr+(write_out_index)][3:0]);
++            if (!add_wrong_data_crc) crcDat_in <= (doingACMD51 ? SCR[write_out_index][3:0] : FLASHmem[BlockAddr+(write_out_index)][3:0]);
++            else crcDat_in <= 4'b1010;
++
++            write_out_index <= write_out_index + 1;
++          end
++
++          datOut <= last_din;
++
++          if (transf_cnt > bitBlockRec) begin
++            crcDat_en <= 0;
++          end
++
++        end else if (transf_cnt > bitBlockRec + 1 & crc_c != 0) begin
++          datOut <= last_din;
++          crcDat_en <= 0;
++          crc_c <= crc_c - 1;
++          if (crc_c <= 16) begin
++            datOut[0] <= crcDat_out[0][crc_c-1];
++            datOut[1] <= crcDat_out[1][crc_c-1];
++            datOut[2] <= crcDat_out[2][crc_c-1];
++            datOut[3] <= crcDat_out[3][crc_c-1];
++          end
++        end else if (transf_cnt == bitBlock - 2) begin
++          datOut <= 4'b1111;
++          BlockAddr += 512;
++        end else if ((transf_cnt != 0) && (crc_c == 0)) begin
++          oeDat <= 0;
++          CardStatus[12:9] <= `TRAN;
++        end
++      end
++
++      WRITE_FLASH: begin
++        flash_write_cnt <= flash_write_cnt + 1;
++        CardStatus[12:9] <= `PRG;
++        datOut[0] <= 0;
++        datOut[1] <= 1;
++        datOut[2] <= 1;
++        datOut[3] <= 1;
++
++        if (flash_write_cnt == 0) datOut <= 1;
++        else if (flash_write_cnt == 1) datOut[0] <= 1;
++        else if (flash_write_cnt == 2) datOut[0] <= 0;
++
++        else if ((flash_write_cnt > 2) && (flash_write_cnt < 7)) begin
++          if (crc_ok) datOut[0] <= okcrctoken[6-flash_write_cnt];
++          else datOut[0] <= invalidcrctoken[6-flash_write_cnt];
++        end else if ((flash_write_cnt >= 7) && (flash_write_cnt < 264)) begin
++          datOut[0] <= 0;
++
++          flash_blockwrite_cnt <= flash_blockwrite_cnt + 2;
++          FLASHmem[BlockAddr+(flash_blockwrite_cnt)] <= Inbuff[flash_blockwrite_cnt];
++          FLASHmem[BlockAddr+(flash_blockwrite_cnt+1)] <= Inbuff[flash_blockwrite_cnt+1];
++        end else begin
++          if (flash_write_cnt == 264) BlockAddr += 512;
++
++          datOut <= 1;
++          InbuffStatus <= 0;
++          CardStatus[12:9] <= `TRAN;
++        end
++      end
++    endcase
++  end
++
++  integer sdModel_file_desc;
++
++  initial begin
++    sdModel_file_desc = $fopen("./sdcard/sd_model.log");
++    if (sdModel_file_desc < 2) begin
++      $display("*E Could not open/create testbench log file in /log/ directory!");
++      $finish;
++    end
++  end
++
++  task ResetCard;  //  MAC registers
++    begin
++      add_wrong_data_crc <= 0;
++      add_wrong_cmd_indx <= 0;
++      add_wrong_cmd_crc <= 0;
++      cardIdentificationState <= 1;
++      state <= IDLE;
++      dataState <= DATA_IDLE;
++      Busy <= 0;
++      oeCmd <= 0;
++      crcCnt <= 0;
++`ifdef SD_MODEL_INITIALIZED
++    CardTransferActive <= 1;
++`else
++    CardTransferActive <= 0;
++`endif
++      qCmd <= 1;
++      oeDat <= 0;
++      cmdOut <= 0;
++      cmdWrite <= 0;
++      startUppCnt <= 0;
++      InbuffStatus <= 0;
++      datOut <= 4'hf;
++      inCmd <= 0;
++      BusWidth <= 1;
++      responseType = 0;
++      crcIn <= 0;
++      response_S <= 0;
++      crcEn <= 0;
++      crcRst <= 0;
++      cmdRead <= 0;
++      ValidCmd <= 0;
++      inValidCmd = 0;
++      appendCrc <= 0;
++      RCA <= `RCASTART;
++      OCR <= `OCRSTART;
++      CardStatus <= `STATUSSTART;
++      CID <= `CIDSTART;
++      CSD <= `CSDSTART;
++      response_CMD <= 0;
++      outDelayCnt <= 0;
++      crcDat_rst <= 1;
++      crcDat_en <= 0;
++      crcDat_in <= 0;
++      transf_cnt <= 0;
++      BlockAddr <= 0;
++      block_cnt <= 0;
++      wptr <= 0;
++      transf_cnt <= 0;
++      crcDat_rst <= 1;
++      crcDat_en <= 0;
++      crcDat_in <= 0;
++      flash_write_cnt <= 0;
++      flash_blockwrite_cnt <= 0;
++    end
++  endtask
++endmodule
+\ No newline at end of file
+diff --git a/model/sd_crc_16.v b/model/sd_crc_16.v
+new file mode 100644
+index 0000000..d398aa7
+--- /dev/null
++++ b/model/sd_crc_16.v
+@@ -0,0 +1,43 @@
++// ==========================================================================
++// CRC Generation Unit - Linear Feedback Shift Register implementation
++// (c) Kay Gorontzi, GHSi.de, distributed under the terms of LGPL
++// ==========================================================================
++module sd_crc_16(BITVAL, ENABLE, BITSTRB, CLEAR, CRC);
++   input        BITVAL;                            // Next input bit
++   input        ENABLE;                            // Enable calculation
++   input        BITSTRB;                           // Current bit valid (Clock)
++   input        CLEAR;                             // Init CRC value
++   output [15:0] CRC;                               // Current output CRC value
++
++   reg    [15:0] CRC;                               // We need output registers
++   wire         inv;
++   
++   assign inv = BITVAL ^ CRC[15];                   // XOR required?
++   
++   always @(posedge BITSTRB or posedge CLEAR) begin
++      if (CLEAR) begin
++         CRC <= 0;                                  // Init before calculation
++         end
++      else begin
++         if (ENABLE == 1) begin
++             CRC[15] <= CRC[14];
++             CRC[14] <= CRC[13];
++             CRC[13] <= CRC[12];
++             CRC[12] <= CRC[11] ^ inv;
++             CRC[11] <= CRC[10];
++             CRC[10] <= CRC[9];
++             CRC[9] <= CRC[8];
++             CRC[8] <= CRC[7];
++             CRC[7] <= CRC[6];
++             CRC[6] <= CRC[5];
++             CRC[5] <= CRC[4] ^ inv;
++             CRC[4] <= CRC[3];
++             CRC[3] <= CRC[2];
++             CRC[2] <= CRC[1];
++             CRC[1] <= CRC[0];
++             CRC[0] <= inv;
++             end
++         end
++      end
++   
++endmodule
+\ No newline at end of file
+diff --git a/model/sd_crc_7.v b/model/sd_crc_7.v
+new file mode 100644
+index 0000000..fee434e
+--- /dev/null
++++ b/model/sd_crc_7.v
+@@ -0,0 +1,34 @@
++// ==========================================================================
++// CRC Generation Unit - Linear Feedback Shift Register implementation
++// (c) Kay Gorontzi, GHSi.de, distributed under the terms of LGPL
++// ==========================================================================
++module sd_crc_7(BITVAL, ENABLE, BITSTRB, CLEAR, CRC);
++   input        BITVAL;                            // Next input bit
++   input        ENABLE;                            // Enable calculation
++   input        BITSTRB;                           // Current bit valid (Clock)
++   input        CLEAR;                             // Init CRC value
++   output [6:0] CRC;                               // Current output CRC value
++
++   reg    [6:0] CRC;                               // We need output registers
++   wire         inv;
++   
++   assign inv = BITVAL ^ CRC[6];                   // XOR required?
++   
++   always @(posedge BITSTRB or posedge CLEAR) begin
++      if (CLEAR) begin
++         CRC <= 0;                                  // Init before calculation
++         end
++      else begin
++         if (ENABLE == 1) begin
++             CRC[6] <= CRC[5];
++             CRC[5] <= CRC[4];
++             CRC[4] <= CRC[3];
++             CRC[3] <= CRC[2] ^ inv;
++             CRC[2] <= CRC[1];
++             CRC[1] <= CRC[0];
++             CRC[0] <= inv;
++             end
++         end
++      end
++   
++endmodule
+\ No newline at end of file
+diff --git a/sim.mk b/sim.mk
+deleted file mode 100644
+index 77ed65e..0000000
+--- a/sim.mk
++++ /dev/null
+@@ -1,44 +0,0 @@
+-# Copyright 2025 ETH Zurich and University of Bologna.
+-# Solderpad Hardware License, Version 0.51, see LICENSE for details.
+-# SPDX-License-Identifier: SHL-0.51
+-
+-# Authors:
+-# - Micha Wehrli <miwehrli@student.ethz.ch>
+-# - Axel Vanoni <axvanoni@student.ethz.ch>
+-
+-$(SDHCI_ROOT)/target/sim/model/sd_crc_7.v:
+-	curl -o $@ https://raw.githubusercontent.com/fabriziotappero/ip-cores/refs/heads/communication_controller_wishbone_sd_card_controller/rtl/verilog/sd_crc_7.v
+-$(SDHCI_ROOT)/target/sim/model/sd_crc_16.v:
+-	curl -o $@ https://raw.githubusercontent.com/fabriziotappero/ip-cores/refs/heads/communication_controller_wishbone_sd_card_controller/rtl/verilog/sd_crc_16.v
+-$(SDHCI_ROOT)/target/sim/model/sdModel.v:
+-	curl -o $@ https://gist.githubusercontent.com/micha4w/38fad58c1cea3157f204709d4eca227e/raw/6bd185335ec809baef707e8ec3cdde7fd5bcb6fa/sdModel.v
+-
+-VLOG_ARGS ?= -timescale=1ns/1ps
+-
+-$(SDHCI_ROOT)/target/sim/vsim/compile.sdhci.tcl: $(SDHCI_ROOT)/Bender.yml $(SDHCI_ROOT)/Bender.lock
+-	$(BENDER) script vsim -t simulation -t test -t vsim --vlog-arg="$(VLOG_ARGS)" > $@
+-
+-
+-sdhci-sim-model-all: $(SDHCI_ROOT)/target/sim/model/sd_crc_7.v
+-sdhci-sim-model-all: $(SDHCI_ROOT)/target/sim/model/sd_crc_16.v
+-sdhci-sim-model-all: $(SDHCI_ROOT)/target/sim/model/sdModel.v
+-
+-sdhci-sim-all: sdhci-sim-model-all
+-sdhci-sim-all: $(SDHCI_ROOT)/target/sim/vsim/compile.sdhci.tcl
+-
+-sdhci-sim-vsim-clean:
+-	rm -fr $(SDHCI_ROOT)/target/sim/vsim/work
+-	rm -fr $(SDHCI_ROOT)/target/sim/vsim/vsim.wlf
+-	rm -fr $(SDHCI_ROOT)/target/sim/vsim/tb_acmd12.vcd
+-	rm -fr $(SDHCI_ROOT)/target/sim/vsim/tb_dat.vcd
+-	rm -fr $(SDHCI_ROOT)/target/sim/vsim/transcript
+-
+-sdhci-sim-model-clean:
+-	rm -f $(SDHCI_ROOT)/target/sim/model/sd_crc_7.v
+-	rm -f $(SDHCI_ROOT)/target/sim/model/sd_crc_16.v
+-	rm -f $(SDHCI_ROOT)/target/sim/model/sdModel.v
+-
+-sdhci-sim-clean: sdhci-sim-vsim-clean
+-sdhci-sim-deepclean: sdhci-sim-clean sdhci-sim-model-clean
+-
+-.PHONY: sdhci-sim-all sdhci-sim-clean sdhci-sim-deepclean sdhci-sim-model-clean sdhci-sim-vsim-clean
+diff --git a/src/.gitignore b/src/.gitignore
+deleted file mode 100644
+index 5b7843a..0000000
+--- a/src/.gitignore
++++ /dev/null
+@@ -1,2 +0,0 @@
+-obj_dir
+-*.vcd
+\ No newline at end of file
+diff --git a/src/sdhci_fixture.sv b/src/sdhci_fixture.sv
+deleted file mode 100644
+index bd5e845..0000000
+--- a/src/sdhci_fixture.sv
++++ /dev/null
+@@ -1,83 +0,0 @@
+-// Copyright 2025 ETH Zurich and University of Bologna.
+-// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+-// SPDX-License-Identifier: SHL-0.51
+-
+-// Authors:
+-// - Micha Wehrli <miwehrli@student.ethz.ch>
+-// - Axel Vanoni <axvanoni@student.ethz.ch>
+-
+-module sdhci_fixture #(
+-    parameter time         ClkPeriod      = 50ns,
+-    parameter int unsigned RstCycles      = 1,
+-    parameter int unsigned TimeoutDivider = 1,
+-    parameter int unsigned BufferNumWords = 256,
+-    parameter bit          AllowNoncompliantBufferSizes = 1'b0
+-)();
+-  `include "obi/typedef.svh"
+-
+-  logic clk, rst_n;
+-
+-  localparam obi_pkg::obi_cfg_t sdhci_obi_cfg = obi_pkg::obi_default_cfg(32, 32, 1, '0);
+-  `OBI_TYPEDEF_DEFAULT_ALL(sdhci_obi, sdhci_obi_cfg);
+-
+-  sdhci_obi_req_t obi_req;
+-  sdhci_obi_rsp_t obi_rsp;
+-
+-  logic sdhc_dat_en, sdhc_cmd_en, sdhc_cmd, tb_cmd;
+-  logic [3:0] sdhc_dat, tb_dat;
+-  logic sd_clk, sd_cd;
+-  logic interrupt;
+-
+-  sdhci_top_obi #(
+-      .ObiCfg           (sdhci_obi_cfg),
+-      .obi_req_t        (sdhci_obi_req_t),
+-      .obi_rsp_t        (sdhci_obi_rsp_t),
+-      .ClkPreDiv        (2),
+-      .NumDebounceCycles(2),
+-      .BufferNumWords   (BufferNumWords),
+-      .AllowNoncompliantBufferSizes(AllowNoncompliantBufferSizes),
+-      .TimeoutDivider   (TimeoutDivider)
+-  ) i_sdhci_top (
+-      .clk_i  (clk),
+-      .rst_ni (rst_n),
+-
+-      .obi_req_i  (obi_req),
+-      .obi_rsp_o  (obi_rsp),
+-      .sd_clk_o   (sd_clk),
+-      .sd_cd_ni   (sd_cd),
+-
+-      .sd_cmd_i   (tb_cmd     ),
+-      .sd_cmd_o   (sdhc_cmd   ),
+-      .sd_cmd_en_o(sdhc_cmd_en),
+-
+-      .sd_dat_i   (tb_dat     ),
+-      .sd_dat_o   (sdhc_dat   ),
+-      .sd_dat_en_o(sdhc_dat_en),
+-
+-      .interrupt_o(interrupt)
+-  );
+-
+-  sdhci_vip #(
+-    .obi_req_t(sdhci_obi_req_t),
+-    .obi_rsp_t(sdhci_obi_rsp_t)
+-  ) vip (
+-    .clk_o      (clk),
+-    .rst_no     (rst_n),
+-
+-    .obi_req_o  (obi_req),
+-    .obi_rsp_i  (obi_rsp),
+-    .sd_clk_i   (sd_clk),
+-    .sd_cd_no   (sd_cd),
+-
+-    .sd_cmd_o   (tb_cmd),
+-    .sd_cmd_i   (sdhc_cmd),
+-    .sd_cmd_en_i(sdhc_cmd_en),
+-
+-    .sd_dat_o   (tb_dat),
+-    .sd_dat_i   (sdhc_dat),
+-    .sd_dat_en_i(sdhc_dat_en),
+-
+-    .interrupt_i(interrupt)
+-  );
+-
+-endmodule
+diff --git a/src/sdhci_obi_driver.sv b/src/sdhci_obi_driver.sv
+deleted file mode 100644
+index 4e05b9f..0000000
+--- a/src/sdhci_obi_driver.sv
++++ /dev/null
+@@ -1,267 +0,0 @@
+-// Copyright 2025 ETH Zurich and University of Bologna.
+-// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+-// SPDX-License-Identifier: SHL-0.51
+-
+-// Authors:
+-// - Axel Vanoni <axvanoni@student.ethz.ch>
+-
+-module sdhci_obi_driver #(
+-  parameter type obi_req_t = logic,
+-  parameter type obi_rsp_t = logic,
+-  parameter time TA = 5ns,
+-  parameter time TT = 15ns
+-)(
+-  input  logic clk_i,
+-  input  logic rst_ni,
+-
+-  output obi_req_t obi_req_o,
+-  input  obi_rsp_t obi_rsp_i
+-);
+-
+-  initial begin
+-    obi_req_o = '0;
+-  end
+-
+-  task automatic obi_write(
+-    logic [31:0] address,
+-    logic [3:0]  be,
+-    logic [31:0] data,
+-    logic finish_transaction = 1'b1
+-  );
+-    @(posedge clk_i);
+-    #(TA);
+-    obi_req_o.a.we    = 1'b1;
+-    obi_req_o.a.addr  = address;
+-    obi_req_o.a.be    = be;
+-    obi_req_o.a.wdata = data;
+-    obi_req_o.req = 1'b1;
+-
+-    // wait for the interface to be ready
+-    #(TT - TA);
+-    while (obi_rsp_i.gnt == 1'b0) begin
+-      @(posedge clk_i)
+-      #(TT);
+-    end
+-
+-    if (finish_transaction) begin
+-      @(posedge clk_i)
+-      #(TA);
+-      obi_req_o.req = 1'b0;
+-    end
+-  endtask
+-
+-  task automatic obi_read(
+-    logic [31:0] address,
+-    logic [3:0]  be,
+-    output logic [31:0] data
+-  );
+-    @(posedge clk_i);
+-    #(TA);
+-    obi_req_o.a.we    = 1'b0;
+-    obi_req_o.a.addr  = address;
+-    obi_req_o.a.be    = be;
+-    obi_req_o.req = 1'b1;
+-
+-    // wait for the interface to be ready
+-    #(TT - TA);
+-    while (obi_rsp_i.gnt == 1'b0) begin
+-      @(posedge clk_i)
+-      #(TT);
+-    end
+-
+-    @(posedge clk_i)
+-    #(TA);
+-    obi_req_o.req = 1'b0;
+-
+-    #(TT - TA);
+-    while (obi_rsp_i.rvalid == 1'b0) begin
+-      @(posedge clk_i)
+-      #(TT);
+-    end
+-    data = obi_rsp_i.r.rdata;
+-  endtask
+-
+-  task automatic set_interrupt_status_enable(
+-    logic [15:0] normal_interrupt_status_enable = '0,
+-    logic [15:0] error_interrupt_status_enable  = '0,
+-    logic set_normal_ise = 1'b1,
+-    logic set_error_ise = 1'b1,
+-    logic finish_transaction = 1'b1
+-  );
+-    logic [3:0] be;
+-    if (set_normal_ise) begin
+-      be[1:0] = '1;
+-    end
+-    if (set_error_ise) begin
+-      be[3:2] = '1;
+-    end
+-
+-    obi_write('h034, be, {error_interrupt_status_enable, normal_interrupt_status_enable}, finish_transaction);
+-  endtask
+-
+-  task automatic set_interrupt_signal_enable(
+-    logic [15:0] normal_interrupt_signal_enable = '0,
+-    logic [15:0] error_interrupt_signal_enable  = '0,
+-    logic set_normal_ise = 1'b1,
+-    logic set_error_ise = 1'b1,
+-    logic finish_transaction = 1'b1
+-  );
+-    logic [3:0] be;
+-    if (set_normal_ise) begin
+-      be[1:0] = '1;
+-    end
+-    if (set_error_ise) begin
+-      be[3:2] = '1;
+-    end
+-
+-    obi_write('h038, be, {error_interrupt_signal_enable, normal_interrupt_signal_enable}, finish_transaction);
+-  endtask
+-
+-  task automatic set_frequency_select(
+-    logic [7:0] divider,
+-    logic finish_transaction = 1'b1
+-  );
+-    logic [3:0] be;
+-    be = 4'b0010;
+-    obi_write('h02C, be, {16'b0, divider, 8'b0}, finish_transaction);
+-  endtask
+-
+-  task automatic set_clock_enable(
+-    logic enable,
+-    logic finish_transaction = 1'b1
+-  );
+-    logic [3:0] be;
+-    be = 4'b0001;
+-    obi_write('h02C, be, {16'b0, 5'b0, enable, 2'b0}, finish_transaction);
+-  endtask
+-
+-  task automatic set_transfer_mode(
+-    logic is_multi_block,
+-    logic is_read,
+-    logic auto_cmd12_enable,
+-    logic block_count_enable,
+-    logic dma_enable,
+-    logic finish_transaction = 1'b1
+-  );
+-    logic [3:0] be;
+-    be = 4'b0001;
+-    obi_write('h00C, be, {24'b0, 2'b0, is_multi_block, is_read, 1'b0,
+-                          auto_cmd12_enable, block_count_enable, dma_enable}, finish_transaction);
+-  endtask
+-
+-  task automatic set_host_control_1(
+-    /* logic       card_detect_signal_selection, */
+-    /* logic       card_detect_test_level, */
+-    /* logic       do_8_bit_transfer, */
+-    logic [1:0] dma_select,
+-    logic       high_speed_enable,
+-    logic       do_4_bit_transfer,
+-    /* logic       led_control, */
+-    logic finish_transaction
+-  );
+-    logic [3:0] be;
+-    be = 4'b0001;
+-    obi_write('h028, be, {24'b0, 3'b0, dma_select, high_speed_enable, do_4_bit_transfer, 1'b0}, finish_transaction);
+-  endtask
+-
+-  task automatic set_block_size_count(
+-    logic [11:0] block_size,
+-    logic [15:0] block_count,
+-    logic set_size = 1'b1,
+-    logic set_count = 1'b1,
+-    logic finish_transaction = 1'b1
+-  );
+-    logic [3:0] be;
+-    be = 4'b0000;
+-    if (set_size == 1'b1) begin
+-      be[1:0] = 2'b11;
+-    end
+-    if (set_count == 1'b1) begin
+-      be[3:2] = 2'b11;
+-    end
+-
+-    obi_write('h004, be, {block_count, 4'b0, block_size}, finish_transaction);
+-  endtask
+-
+-  task automatic set_data_timeout(
+-    logic [3:0] exponent_minus_13,
+-    logic finish_transaction = 1'b1
+-  );
+-    logic [3:0] be;
+-    be = 4'b0100;
+-
+-    obi_write('h02c, be, {24'b0, 4'b0, exponent_minus_13}, finish_transaction);
+-  endtask
+-
+-  task automatic launch_command(
+-    logic [5:0] command_index,
+-    logic [1:0] command_type,
+-    logic data_present,
+-    logic index_check_enable,
+-    logic crc_check_enable,
+-    logic [1:0] response_type,
+-    logic finish_transaction = 1'b1
+-  );
+-    logic [3:0] be;
+-    be = 4'b1100;
+-    obi_write('h00C, be, {2'b0, command_index, command_type, data_present, index_check_enable,
+-                          crc_check_enable, 1'b0, response_type, 16'b0}, finish_transaction);
+-  endtask
+-
+-  task automatic read_buffer_data(
+-    output logic [31:0] data
+-  );
+-    logic [3:0] be;
+-    be = 4'b1111;
+-    obi_read('h020, be, data);
+-  endtask
+-
+-  task automatic write_buffer_data(
+-    logic [31:0] data,
+-    logic finish_transaction = 1'b1
+-  );
+-    logic [3:0] be;
+-    be = 4'b1111;
+-    obi_write('h020, be, data, finish_transaction);
+-  endtask
+-
+-  task automatic get_interrupt_status(
+-    output logic [15:0] normal_interrupt_status,
+-    output logic [15:0] error_interrupt_status
+-  );
+-    logic [3:0] be;
+-    be = 4'b1111;
+-    obi_read('h030, be, {error_interrupt_status, normal_interrupt_status});
+-  endtask
+-
+-  task automatic clear_interrupt_status(
+-    input logic [15:0] normal_interrupt_status,
+-    input logic [15:0] error_interrupt_status
+-  );
+-    logic [3:0] be;
+-    be = 4'b1111;
+-    obi_write('h030, be, {error_interrupt_status, normal_interrupt_status}, 1'b1);
+-  endtask
+-
+-  task automatic get_acmd_error_status(
+-    output logic [7:0] error_status
+-  );
+-    logic [3:0] be;
+-    logic [31:0] response;
+-    be = 4'b0001;
+-    obi_read('h03C, be, response);
+-    error_status = response[7:0];
+-  endtask
+-
+-  task automatic get_present_status_buffer_enable(
+-    output logic buffer_read_enable,
+-    output logic buffer_write_enable
+-  );
+-    logic [3:0] be;
+-    logic [31:0] response;
+-    be = 4'b0011;
+-    obi_read('h024, be, response);
+-    buffer_read_enable = response[11];
+-    buffer_write_enable = response[10];
+-  endtask
+-endmodule
+diff --git a/src/sdhci_sd_driver.sv b/src/sdhci_sd_driver.sv
+deleted file mode 100644
+index 7f6c003..0000000
+--- a/src/sdhci_sd_driver.sv
++++ /dev/null
+@@ -1,318 +0,0 @@
+-// Copyright 2025 ETH Zurich and University of Bologna.
+-// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+-// SPDX-License-Identifier: SHL-0.51
+-
+-// Authors:
+-// - Axel Vanoni <axvanoni@student.ethz.ch>
+-
+-module sdhci_sd_driver #(
+-  parameter time TA = 5ns,
+-  parameter time TT = 15ns
+-)(
+-  input  logic sd_clk_i,
+-
+-  output logic sd_cmd_o,
+-  input  logic sd_cmd_i,
+-  input  logic sd_cmd_en_i,
+-
+-  output logic [3:0] sd_dat_o,
+-  input  logic [3:0] sd_dat_i,
+-  input  logic       sd_dat_en_i
+-);
+-
+-  initial begin
+-    sd_cmd_o  = 1'b1;
+-    sd_dat_o  = '1;
+-  end
+-
+-  task automatic apply_logic (
+-    input logic value,
+-    output logic to_write
+-  );
+-    @(posedge sd_clk_i);
+-    #(TA);
+-    to_write = value;
+-  endtask
+-
+-  task automatic wait_for_cmd_released();
+-    @(posedge sd_clk_i);
+-    #(TT);
+-    while (sd_cmd_en_i != 1'b0) begin
+-      @(posedge sd_clk_i);
+-      #(TT);
+-    end
+-  endtask
+-
+-  task automatic wait_for_cmd_held();
+-    @(posedge sd_clk_i);
+-    #(TT);
+-    while (sd_cmd_en_i != 1'b1) begin
+-      @(posedge sd_clk_i);
+-      #(TT);
+-    end
+-  endtask
+-
+-  task automatic wait_for_dat_released();
+-    @(posedge sd_clk_i);
+-    #(TT);
+-    while (sd_dat_en_i != 1'b0) begin
+-      @(posedge sd_clk_i);
+-      #(TT);
+-    end
+-  endtask
+-
+-  task automatic wait_for_dat_held();
+-    @(posedge sd_clk_i);
+-    #(TT);
+-    while (sd_dat_en_i != 1'b1) begin
+-      @(posedge sd_clk_i);
+-      #(TT);
+-    end
+-  endtask
+-
+-  task automatic send_response_48 (
+-    input logic [5:0] index,
+-    input logic [6:0] crc,
+-    input logic [31:0] card_status = '0,
+-    input logic end_bit = 1'b1
+-  );
+-    // start bit
+-    apply_logic(1'b0, sd_cmd_o);
+-
+-    // transmission bit
+-    apply_logic(1'b0, sd_cmd_o);
+-
+-    for (int i = 0; i < 6; i += 1) begin
+-      apply_logic(index[5-i], sd_cmd_o);
+-    end
+-
+-    for (int i = 0; i < 32; i += 1) begin
+-      apply_logic(card_status[31-i], sd_cmd_o);
+-    end
+-
+-    for (int i = 0; i < 7; i += 1) begin
+-      apply_logic(crc[6-i], sd_cmd_o);
+-    end
+-
+-    apply_logic(end_bit, sd_cmd_o);
+-  endtask
+-
+-  task automatic claim_busy();
+-    apply_logic(1'b0, sd_dat_o[0]);
+-  endtask
+-
+-  task automatic release_busy();
+-    apply_logic(1'b1, sd_dat_o[0]);
+-  endtask
+-
+-  task automatic send_response_136(
+-    input logic [126:0] cid_status
+-  );
+-    // start bit
+-    apply_logic(1'b0, sd_cmd_o);
+-    // transmission bit
+-    apply_logic(1'b0, sd_cmd_o);
+-
+-    // check bits
+-    repeat (6) apply_logic(1'b1, sd_cmd_o);
+-
+-    // cid
+-    for (int i = 0; i < 127; i += 1) begin
+-      apply_logic(cid_status[126-i], sd_cmd_o);
+-    end
+-
+-    // check bits
+-    apply_logic(1'b1, sd_cmd_o);
+-  endtask
+-
+-  task automatic send_response_dat(
+-    input logic is_ok
+-  );
+-    // start bit
+-    apply_logic(1'b0, sd_dat_o[0]);
+-    // transmission ok: 010, transmission not ok: 101
+-    // keyword in spec: CRC status token
+-    apply_logic(~is_ok, sd_dat_o[0]);
+-    apply_logic( is_ok, sd_dat_o[0]);
+-    apply_logic(~is_ok, sd_dat_o[0]);
+-    // end bit
+-    apply_logic(1'b1, sd_dat_o[0]);
+-  endtask
+-
+-  task automatic send_byte(
+-    logic [7:0] data,
+-    logic is_4_bit
+-  );
+-    if (is_4_bit) begin
+-      @(posedge sd_clk_i);
+-      #(TA);
+-      sd_dat_o = data[7:4];
+-
+-      @(posedge sd_clk_i);
+-      #(TA);
+-      sd_dat_o = data[3:0];
+-    end else begin
+-      for (int i = 0; i < 8; ++i) begin
+-        @(posedge sd_clk_i);
+-        #(TA);
+-        sd_dat_o[0] = data[7-i];
+-      end
+-    end
+-  endtask
+-
+-  task automatic send_data_block(
+-    logic [511:0][7:0] block,
+-    logic [9:0] block_size,
+-    logic is_4_bit
+-  );
+-    // start bit
+-    @(posedge sd_clk_i);
+-    #(TA);
+-    if (is_4_bit) begin
+-      sd_dat_o = '0;
+-    end else begin
+-      sd_dat_o[0] = '0;
+-    end
+-
+-    for (int i = 0; i < block_size; i++) begin
+-      send_byte(.data(block[i]), .is_4_bit(is_4_bit));
+-    end
+-
+-    if (is_4_bit) begin
+-      logic [511:0][7:0] reversed_block;
+-      logic [3:0][1023:0] dat_channels;
+-      logic [3:0][15:0]   dat_crc;
+-      reversed_block = reverse_bytes(block, block_size);
+-      dat_channels = split_data_into_dat_channels(.block(reversed_block), .block_size(block_size));
+-      for (int i = 0; i < 4; ++i) begin
+-        dat_crc[i] = calculate_crc16(.data(dat_channels[i]), .data_length(block_size * 2));
+-      end
+-      for (int i = 0; i < 16; ++i) begin
+-        @(posedge sd_clk_i);
+-        #(TA);
+-        for (int j = 0; j < 4; ++j) begin
+-          sd_dat_o[j] = dat_crc[j][15 - i];
+-        end
+-      end
+-    end else begin
+-      logic [511:0][7:0] reversed_block;
+-      logic [4095:0] flattened_block;
+-      logic [15:0]   dat0_crc;
+-      reversed_block = reverse_bytes(block, block_size);
+-      dat0_crc = calculate_crc16(.data(reversed_block), .data_length(block_size * 8));
+-      $display("%x", dat0_crc);
+-      for (int i = 0; i < 16; ++i) begin
+-        @(posedge sd_clk_i);
+-        #(TA);
+-        sd_dat_o[0] = dat0_crc[15 - i];
+-      end
+-    end
+-
+-    @(posedge sd_clk_i);
+-    #(TA);
+-    // regardless of the width, all need idle at 1
+-    sd_dat_o = '1;
+-  endtask
+-
+-  function automatic logic [511:0][7:0] reverse_bytes(
+-    logic [511:0][7:0] data,
+-    int data_length
+-  );
+-    logic [511:0][7:0] reversed;
+-    reversed = '0;
+-
+-    for (int i = 0; i < data_length; ++i) begin
+-      reversed[data_length-1-i] = data[i];
+-    end
+-
+-    return reversed;
+-  endfunction
+-
+-  function automatic logic [3:0][1023:0] split_data_into_dat_channels(
+-    logic [511:0][7:0] block,
+-    logic [9:0] block_size
+-  );
+-    int current_block_index;
+-    int current_flattened_index;
+-
+-    logic [3:0][1023:0] result;
+-
+-    result = '0;
+-    current_flattened_index = block_size * 2 - 2;
+-
+-    for (current_block_index = block_size-1; current_block_index >= 0; --current_block_index) begin
+-      for (int i = 0; i < 4; ++i) begin
+-        result[i][current_flattened_index+1] = block[current_block_index][i+4];
+-        result[i][current_flattened_index  ] = block[current_block_index][i];
+-      end
+-      current_flattened_index -= 2;
+-    end
+-
+-    return result;
+-  endfunction
+-
+-  function automatic logic [15:0] calculate_crc16(
+-    logic [4095:0] data,
+-    int data_length
+-  );
+-    int current_index;
+-    logic [4095+16:0] data_padded;
+-    logic [16:0] crc_polynomial;
+-
+-    crc_polynomial = '0;
+-    crc_polynomial[16] = 1'b1;
+-    crc_polynomial[12] = 1'b1;
+-    crc_polynomial[ 5] = 1'b1;
+-    crc_polynomial[ 0] = 1'b1;
+-
+-    data_padded = '0;
+-    // compiler does not allow us to assign a slice
+-    // with dynamic indexing, so doing it by hand
+-    for (int i = data_length-1; i >= 0; --i) begin
+-      data_padded[i+16] = data[i];
+-    end
+-
+-    current_index = data_length-1;
+-
+-    while (current_index >= 0 && |(data_padded[4095+16:16])) begin
+-      if (data_padded[current_index + 16] == 1'b1) begin
+-        for (int i = 0; i < 17; ++i) begin
+-          data_padded[current_index + 16 - i] ^= crc_polynomial[16-i];
+-        end
+-      end
+-      current_index--;
+-    end
+-
+-    return data_padded[15:0];
+-  endfunction
+-
+-  task automatic send_data_block_interruptible(
+-    logic [511:0][7:0] block,
+-    logic [9:0] block_size,
+-    logic is_4_bit,
+-    output logic was_interrupted
+-  );
+-    fork
+-      fork
+-        begin
+-          send_data_block(.block(block), .block_size(block_size), .is_4_bit(is_4_bit));
+-          was_interrupted = 1'b0;
+-        end
+-        begin
+-          wait_for_cmd_held();
+-          wait_for_cmd_released();
+-          // the second cycle after the cmd
+-          // should be the end bit
+-          was_interrupted = 1'b1;
+-        end
+-      join_any
+-      disable fork;
+-    join
+-    if (was_interrupted) begin
+-      @(posedge sd_clk_i);
+-      #(TA);
+-      sd_dat_o = '1;
+-    end
+-  endtask
+-
+-endmodule
+diff --git a/src/sdhci_vip.sv b/src/sdhci_vip.sv
+deleted file mode 100644
+index 1f7a335..0000000
+--- a/src/sdhci_vip.sv
++++ /dev/null
+@@ -1,107 +0,0 @@
+-// Copyright 2025 ETH Zurich and University of Bologna.
+-// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+-// SPDX-License-Identifier: SHL-0.51
+-
+-// Authors:
+-// - Axel Vanoni <axvanoni@student.ethz.ch>
+-// - Micha Wehrli <miwehrli@student.ethz.ch>
+-
+-module sdhci_vip #(
+-  parameter type obi_req_t = logic,
+-  parameter type obi_rsp_t = logic,
+-
+-  parameter int unsigned RstCycles = 5,
+-
+-  parameter time ClkPeriod = 20ns,
+-  parameter time TA = 5ns,
+-  parameter time TT = 15ns
+-)(
+-  output logic clk_o,
+-  output logic rst_no,
+-
+-  output obi_req_t obi_req_o,
+-  input  obi_rsp_t obi_rsp_i,
+-
+-  input  logic sd_clk_i,
+-  output logic sd_cd_no,
+-
+-  output logic sd_cmd_o,
+-  input  logic sd_cmd_i,
+-  input  logic sd_cmd_en_i,
+-
+-  output logic [3:0] sd_dat_o,
+-  input  logic [3:0] sd_dat_i,
+-  input  logic       sd_dat_en_i,
+-
+-  input  logic interrupt_i
+-);
+-  clk_rst_gen #(
+-    .ClkPeriod    ( ClkPeriod ),
+-    .RstClkCycles ( RstCycles )
+-  ) i_clk_rst_sys (
+-    .clk_o  (clk_o ),
+-    .rst_no (rst_no)
+-  );
+-
+-  sdhci_obi_driver #(
+-    .obi_req_t(obi_req_t),
+-    .obi_rsp_t(obi_rsp_t),
+-    .TA(TA),
+-    .TT(TT)
+-  ) obi (
+-    .clk_i    (clk_o),
+-    .rst_ni   (rst_no),
+-    .obi_req_o(obi_req_o),
+-    .obi_rsp_i(obi_rsp_i)
+-  );
+-
+-  sdhci_sd_driver #(
+-    .TA(TA),
+-    .TT(TT)
+-  ) sd (
+-    .sd_clk_i(sd_clk_i),
+-    .sd_cmd_o(sd_cmd_o),
+-    .sd_cmd_i(sd_cmd_i),
+-    .sd_cmd_en_i(sd_cmd_en_i),
+-    .sd_dat_o(sd_dat_o),
+-    .sd_dat_i(sd_dat_i),
+-    .sd_dat_en_i(sd_dat_en_i)
+-  );
+-
+-  initial begin
+-    sd_cd_no  = 1'b1;
+-  end
+-
+-  task automatic wait_for_reset();
+-    @(posedge rst_no);
+-    @(posedge clk_o);
+-  endtask
+-
+-  task automatic wait_for_clk();
+-    @(posedge clk_o);
+-  endtask
+-
+-  task automatic wait_for_sdclk();
+-    @(posedge sd_clk_i);
+-  endtask
+-
+-  task automatic wait_for_interrupt();
+-    @(posedge clk_o);
+-    #(TT);
+-    while (interrupt_i != 1'b1) begin
+-      @(posedge clk_o);
+-      #(TT);
+-    end
+-  endtask
+-
+-  task automatic test_delay();
+-    #(TT);
+-  endtask
+-
+-  task automatic set_cd(logic card_absent);
+-    @(posedge clk_o);
+-    #(TA);
+-    sd_cd_no = card_absent;
+-  endtask
+-
+-endmodule
+diff --git a/src/tb_acmd12_errorhandling.sv b/src/tb_acmd12_errorhandling.sv
+deleted file mode 100644
+index b655129..0000000
+--- a/src/tb_acmd12_errorhandling.sv
++++ /dev/null
+@@ -1,265 +0,0 @@
+-// Copyright 2025 ETH Zurich and University of Bologna.
+-// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+-// SPDX-License-Identifier: SHL-0.51
+-
+-// Authors:
+-// - Micha Wehrli <miwehrli@student.ethz.ch>
+-// - Axel Vanoni <axvanoni@student.ethz.ch>
+-
+-module tb_acmd12_errorhandling #(
+-    parameter time         ClkPeriod     = 50ns,
+-    parameter int unsigned RstCycles     = 1
+-)();
+-
+-  int ClkEnPeriod;
+-
+-  sdhci_fixture #(
+-    .ClkPeriod(ClkPeriod),
+-    .RstCycles(RstCycles)
+-  ) fixture ();
+-
+-  // < 0 cmd12 gets delayed due to our command
+-  // = 0 both requests arrive at the same time, cmd12 goes first
+-  // > 0 our command gets delayed by cmd12
+-  int CyclesThatDriverCommandArrivesBeforeCMD12;
+-  int IsFirstResponseValid;
+-
+-  logic AutoCMD12First;
+-  logic [15:0] normal_status;
+-  logic [15:0] error_status;
+-  logic [15:0] cmd12_error_status;
+-  logic buf_read_en;
+-  logic buf_write_en;
+-  logic response_done;
+-
+-  initial begin : cmd_response
+-    response_done = 1'b0;
+-    fixture.vip.wait_for_reset();
+-
+-    // response to the request that triggers autocmd12
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-    // bus is idle for 2 cycles
+-    fixture.vip.wait_for_sdclk();
+-    fixture.vip.sd.send_response_48(0, '0);
+-
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-    // bus is idle for 2 cycles
+-    fixture.vip.wait_for_sdclk();
+-    if (IsFirstResponseValid) begin
+-      // valid response, next command should run
+-      if (AutoCMD12First)
+-        fixture.vip.sd.send_response_48(12, 'h7A);
+-      else
+-        fixture.vip.sd.send_response_48(0, '0);
+-    end else begin
+-      // invalid response, next command should not run
+-      fixture.vip.sd.send_response_48('1, '1);
+-    end
+-
+-    if (IsFirstResponseValid) begin
+-      fixture.vip.sd.wait_for_cmd_held();
+-      fixture.vip.sd.wait_for_cmd_released();
+-      // bus is idle for 2 cycles
+-      fixture.vip.wait_for_sdclk();
+-
+-      // Valid response for the second command
+-      if (AutoCMD12First) begin
+-        fixture.vip.sd.send_response_48(0, '0);
+-      end else begin
+-        fixture.vip.sd.send_response_48(12, 'h7A);
+-      end
+-    end
+-
+-    // give time for the status to propagate
+-    repeat (20) fixture.vip.wait_for_clk();
+-    response_done = 1'b1;
+-  end : cmd_response
+-
+-  initial begin
+-    fixture.vip.wait_for_reset();
+-    fixture.vip.sd.wait_for_dat_held();
+-    fixture.vip.sd.wait_for_dat_released();
+-    fixture.vip.wait_for_sdclk();
+-    fixture.vip.sd.send_response_dat(.is_ok(1'b1));
+-  end
+-
+-  initial begin
+-    $timeformat(-9, 0, "ns", 12);
+-    $dumpfile("tb_acmd12.vcd");
+-    $dumpvars(0);
+-
+-    if (!$value$plusargs("CyclesThatDriverCommandArrivesBeforeCMD12=%d", CyclesThatDriverCommandArrivesBeforeCMD12)) begin
+-      // Keep the default regression point away from the timing boundary; directed
+-      // sweeps can still override this plusarg to exercise the collision window.
+-      CyclesThatDriverCommandArrivesBeforeCMD12 = 10;
+-    end
+-    if (!$value$plusargs("IsFirstResponseValid=%d", IsFirstResponseValid)) begin
+-      IsFirstResponseValid = 0;
+-    end
+-    if (!$value$plusargs("ClkEnPeriod=%d", ClkEnPeriod)) begin
+-      ClkEnPeriod = 4;
+-    end
+-
+-    AutoCMD12First = CyclesThatDriverCommandArrivesBeforeCMD12 <= 0;
+-
+-    $display("Testing auto cmd12 with CyclesThatDriverCommandArrivesBeforeCMD12=%d, IsFirstResponseValid=%d, ClkEnPeriod=%d", CyclesThatDriverCommandArrivesBeforeCMD12, IsFirstResponseValid, ClkEnPeriod);
+-
+-    fixture.vip.wait_for_reset();
+-
+-    fixture.vip.obi.set_interrupt_status_enable(
+-      .normal_interrupt_status_enable('hFFFF),
+-      .error_interrupt_status_enable('hFFFF),
+-      .finish_transaction(1'b0)
+-    );
+-
+-    fixture.vip.obi.set_frequency_select(
+-      .divider(8'(ClkEnPeriod >> 1)),
+-      .finish_transaction(1'b0)
+-    );
+-
+-    fixture.vip.obi.set_clock_enable(.enable(1'b1), .finish_transaction(1'b0));
+-
+-    fixture.vip.obi.set_transfer_mode(
+-      .is_multi_block(1'b0),
+-      .is_read(1'b0),
+-      .auto_cmd12_enable(1'b1),
+-      .block_count_enable(1'b1),
+-      .dma_enable(1'b0),
+-      .finish_transaction(1'b0)
+-    );
+-
+-    fixture.vip.obi.set_block_size_count(
+-      .block_size(12'd64),
+-      .block_count(16'd1),
+-      .finish_transaction(1'b0)
+-    );
+-
+-    fixture.vip.obi.launch_command(
+-      .command_index(6'd0),
+-      .command_type (2'b00), // normal command
+-      .data_present (1'b1),
+-      .index_check_enable(1'b0),
+-      .crc_check_enable(1'b0),
+-      .response_type(2'b10), // 48 bit no busy
+-      .finish_transaction(1'b1)
+-    );
+-
+-    fixture.vip.obi.get_present_status_buffer_enable(
+-      .buffer_read_enable(buf_read_en),
+-      .buffer_write_enable(buf_write_en)
+-    );
+-
+-    while (buf_write_en != 1'b0) begin
+-      fixture.vip.obi.get_present_status_buffer_enable(
+-        .buffer_read_enable(buf_read_en),
+-        .buffer_write_enable(buf_write_en)
+-      );
+-    end
+-
+-    repeat (64 / 4 - 1) begin
+-      fixture.vip.obi.write_buffer_data(.data('hDEAD_BEEF), .finish_transaction(1'b0));
+-    end
+-    fixture.vip.obi.write_buffer_data(.data('hDEAD_BEEF), .finish_transaction(1'b1));
+-
+-    fixture.vip.obi.get_present_status_buffer_enable(
+-      .buffer_read_enable(buf_read_en),
+-      .buffer_write_enable(buf_write_en)
+-    );
+-
+-    if (buf_write_en) begin
+-      // we submitted all the data for the block
+-      $fatal(1, "Buffer write enable should be off");
+-    end
+-
+-    fixture.vip.sd.wait_for_dat_held();
+-    fixture.vip.sd.wait_for_dat_released();
+-
+-    // These values are slightly random because of the offset between command start and sd clk period
+-    case (ClkEnPeriod)
+-      1: repeat(8 - CyclesThatDriverCommandArrivesBeforeCMD12) fixture.vip.wait_for_clk();
+-      2: repeat(17 - CyclesThatDriverCommandArrivesBeforeCMD12) fixture.vip.wait_for_clk();
+-      4: repeat(35 - CyclesThatDriverCommandArrivesBeforeCMD12) fixture.vip.wait_for_clk();
+-      default: $fatal(1, "ClkEnPeriod not supported");
+-    endcase
+-
+-    fixture.vip.obi.launch_command(
+-      .command_index(6'd0),
+-      .command_type (2'b00), // normal command
+-      .data_present (1'b0),
+-      .index_check_enable(1'b1),
+-      .crc_check_enable(1'b1),
+-      .response_type(2'b10) // 48bit no busy
+-    );
+-
+-    // wait for first response
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-
+-    if (!IsFirstResponseValid) begin
+-      fork
+-        begin
+-          fork
+-            begin
+-              fixture.vip.sd.wait_for_cmd_held();
+-              $fatal("Second command should not have been sent");
+-            end
+-            begin
+-              repeat (80) fixture.vip.wait_for_sdclk();
+-            end
+-          join_any
+-          disable fork;
+-        end
+-      join
+-    end
+-
+-    // wait for the response to be sent
+-    wait(response_done);
+-
+-    fixture.vip.obi.get_interrupt_status(
+-      .normal_interrupt_status(normal_status),
+-      .error_interrupt_status(error_status)
+-    );
+-
+-    fixture.vip.obi.get_acmd_error_status(cmd12_error_status);
+-
+-    // leave some time so we get a cleaner waveform
+-    repeat(10) fixture.vip.wait_for_clk();
+-
+-    if (IsFirstResponseValid) begin
+-      if (|(error_status)) begin
+-        $error("Got an error when we shouldnt have 0x%h", error_status);
+-        $fatal();
+-      end
+-      if (|(cmd12_error_status)) begin
+-        $error("Got a cmd12 error when we shouldnt have 0x%h", cmd12_error_status);
+-        $fatal();
+-      end
+-    end else begin
+-      if (AutoCMD12First) begin
+-        if (error_status != 'b1_0000_0000 /* acmd error */) begin
+-          $error("Got an error when we shouldnt have 0x%h", error_status);
+-          $fatal();
+-        end
+-        if (cmd12_error_status != /* command not issues by acmd12 error + crc error + index error */ 'b1001_0100) begin
+-          $error("Got a cmd12 error when we shouldnt have 0x%h", cmd12_error_status);
+-          $fatal();
+-        end
+-      end else begin
+-        if (error_status != /* acmd error + crc error + index error */ 'b1_0000_1010) begin
+-          $error("Got an error when we shouldnt have 0x%h", error_status);
+-          $fatal();
+-        end
+-        if (cmd12_error_status != /* command not executed */ 'b1) begin
+-          $error("Got a cmd12 error when we shouldnt have 0x%h", cmd12_error_status);
+-          $fatal();
+-        end
+-      end
+-    end
+-
+-    $dumpflush;
+-    $finish();
+-  end
+-
+-endmodule
+diff --git a/src/tb_acmd12_interrupts.sv b/src/tb_acmd12_interrupts.sv
+deleted file mode 100644
+index 18e2376..0000000
+--- a/src/tb_acmd12_interrupts.sv
++++ /dev/null
+@@ -1,224 +0,0 @@
+-// Copyright 2025 ETH Zurich and University of Bologna.
+-// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+-// SPDX-License-Identifier: SHL-0.51
+-
+-// Authors:
+-// - Axel Vanoni <axvanoni@student.ethz.ch>
+-
+-module tb_acmd12_interrupts #(
+-    parameter time         ClkPeriod     = 50ns,
+-    parameter int unsigned RstCycles     = 1
+-)();
+-
+-  int ClkEnPeriod;
+-
+-  sdhci_fixture #(
+-    .ClkPeriod(ClkPeriod),
+-    .RstCycles(RstCycles)
+-  ) fixture ();
+-
+-  task automatic wfi(input int unsigned timeout_cycles, string error_context);
+-    fork
+-      begin
+-        fork
+-          begin
+-            fixture.vip.wait_for_interrupt();
+-          end
+-          begin
+-            repeat(timeout_cycles) fixture.vip.wait_for_sdclk();
+-            $fatal(1, "Interrupt timed out waiting for %s", error_context);
+-          end
+-        join_any
+-        disable fork;
+-      end
+-    join
+-  endtask
+-
+-  task automatic check_irq(logic [15:0] expected_normal, logic [15:0] expected_error, string error_context);
+-    logic [15:0] error_interrupt_status;
+-    logic [15:0] error_interrupt_status_all;
+-    logic [15:0] normal_interrupt_status;
+-    logic [15:0] normal_interrupt_status_all;
+-
+-    fixture.vip.obi.get_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    fixture.vip.obi.clear_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    normal_interrupt_status_all = normal_interrupt_status;
+-    error_interrupt_status_all  = error_interrupt_status;
+-
+-    fixture.vip.obi.get_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    while (normal_interrupt_status || error_interrupt_status) begin
+-      fixture.vip.obi.clear_interrupt_status(
+-        .normal_interrupt_status(normal_interrupt_status),
+-        .error_interrupt_status(error_interrupt_status)
+-      );
+-
+-      normal_interrupt_status_all |= normal_interrupt_status;
+-      error_interrupt_status_all  |= error_interrupt_status;
+-
+-      fixture.vip.obi.get_interrupt_status(
+-        .normal_interrupt_status(normal_interrupt_status),
+-        .error_interrupt_status(error_interrupt_status)
+-      );
+-    end
+-
+-    if (error_interrupt_status_all != expected_error) begin
+-      $fatal(1, "Unexpected error interrupt status, got %x, expected %x (%s)", error_interrupt_status_all, expected_error, error_context);
+-    end
+-
+-    if (normal_interrupt_status_all != expected_normal) begin
+-      $fatal(1, "Unexpected normal interrupt status, got %x, expected %x (%s)", normal_interrupt_status_all, expected_normal, error_context);
+-    end
+-  endtask
+-
+-  initial begin : cmd_response
+-    fixture.vip.wait_for_reset();
+-
+-    // cmd0 with data
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-
+-    // bus is idle for 2 cycles
+-    fixture.vip.wait_for_sdclk();
+-    fixture.vip.sd.send_response_48(0, '0);
+-
+-    // autocmd12 with busy
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-
+-    // bus is idle for 2 cycles
+-    fixture.vip.wait_for_sdclk();
+-    fixture.vip.wait_for_sdclk();
+-    fixture.vip.sd.send_response_48('d12, 'h7A);
+-  end
+-
+-  initial begin : dat_response
+-    fixture.vip.wait_for_reset();
+-
+-    // write
+-    fixture.vip.sd.wait_for_dat_held();
+-    fixture.vip.sd.wait_for_dat_released();
+-
+-    // crc status after 2 idle cycles
+-    fixture.vip.wait_for_sdclk();
+-    fixture.vip.sd.send_response_dat(.is_ok(1'b1));
+-
+-    // claim busy for a while to assert interrupt timing
+-    fixture.vip.sd.claim_busy();
+-    repeat(50) fixture.vip.wait_for_sdclk();
+-    fixture.vip.sd.release_busy();
+-
+-    // autocmd12 with busy
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-    // claim busy for a while to assert interrupt timing
+-    fixture.vip.sd.claim_busy();
+-    repeat(50) fixture.vip.wait_for_sdclk();
+-    fixture.vip.sd.release_busy();
+-  end
+-
+-  initial begin : obi_driver
+-    fixture.vip.wait_for_reset();
+-    fixture.vip.obi.set_interrupt_status_enable(
+-      .normal_interrupt_status_enable('hFFFF),
+-      .error_interrupt_status_enable('hFFFF),
+-      .finish_transaction(1'b0)
+-    );
+-    fixture.vip.obi.set_interrupt_signal_enable(
+-      .normal_interrupt_signal_enable('hFFFF),
+-      .error_interrupt_signal_enable('hFFFF),
+-      .finish_transaction(1'b0)
+-    );
+-
+-    fixture.vip.obi.set_frequency_select(
+-      .divider(8'(ClkEnPeriod >> 1)),
+-      .finish_transaction(1'b0)
+-    );
+-    fixture.vip.obi.set_clock_enable(.enable(1'b1), .finish_transaction(1'b0));
+-
+-    fixture.vip.obi.set_transfer_mode(
+-      .is_multi_block(1'b0),
+-      .is_read(1'b0),
+-      .auto_cmd12_enable(1'b1),
+-      .block_count_enable(1'b0),
+-      .dma_enable(1'b0),
+-      .finish_transaction(1'b0)
+-    );
+-
+-    fixture.vip.obi.set_block_size_count(
+-      .block_size(12'd64),
+-      .block_count(16'd1),
+-      .finish_transaction(1'b0)
+-    );
+-
+-    fixture.vip.obi.launch_command(
+-      .command_index(6'd0),
+-      .command_type (2'b00), // normal command
+-      .data_present (1'b1),
+-      .index_check_enable(1'b0),
+-      .crc_check_enable(1'b0),
+-      .response_type(2'b10), // 48 bit no busy
+-      .finish_transaction(1'b1)
+-    );
+-
+-    wfi(100, "buffer write ready");
+-    check_irq(
+-      .expected_normal('h10), // buffer write ready, command complete
+-      .expected_error ('h0),  // no error
+-      .error_context("buffer write ready, no error")
+-    );
+-
+-    repeat (64 / 4 - 1) begin
+-      fixture.vip.obi.write_buffer_data(.data('hDEAD_BEEF), .finish_transaction(1'b0));
+-    end
+-    fixture.vip.obi.write_buffer_data(.data('hDEAD_BEEF), .finish_transaction(1'b1));
+-
+-    wfi(100, "command complete");
+-    check_irq(
+-      .expected_normal('h01), // command complete
+-      .expected_error ('h0),  // no error
+-      .error_context("command complete")
+-    );
+-
+-    fixture.vip.sd.wait_for_dat_held();
+-    fixture.vip.sd.wait_for_dat_released();
+-
+-    // make sure that we do not receive an interrupt during busy being held
+-    repeat(50) fixture.vip.wait_for_sdclk();
+-    wfi(20, "transfer complete after write");
+-    check_irq(
+-      .expected_normal('h2), // transfer complete
+-      .expected_error ('h0), // no error
+-      .error_context  ("transfer complete after write")
+-    );
+-
+-    // wait for autocmd12
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-
+-    // make sure that we do not receive an interrupt during busy being held
+-    repeat(48) fixture.vip.wait_for_sdclk();
+-    wfi(20, "transfer complete after autocmd");
+-    check_irq(
+-      .expected_normal('h2), // transfer complete
+-      .expected_error ('h0), // no error
+-      .error_context  ("transfer complete after autocmd")
+-    );
+-
+-    $display("All good");
+-
+-    $finish();
+-  end
+-
+-endmodule
+diff --git a/src/tb_block_read.sv b/src/tb_block_read.sv
+deleted file mode 100644
+index 7c81e30..0000000
+--- a/src/tb_block_read.sv
++++ /dev/null
+@@ -1,382 +0,0 @@
+-// Copyright 2025 ETH Zurich and University of Bologna.
+-// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+-// SPDX-License-Identifier: SHL-0.51
+-
+-// Authors:
+-// - Axel Vanoni <axvanoni@student.ethz.ch>
+-
+-module tb_block_read #(
+-    parameter time         ClkPeriod     = 50ns,
+-    parameter int unsigned RstCycles     = 1,
+-    parameter int unsigned ClkEnPeriod   = 1,
+-    parameter int unsigned BlockSize     = 512,
+-    parameter int unsigned BlockCount    = 2,
+-    parameter logic        Do4Bit        = 1'b1,
+-    parameter int unsigned BufferNumWords = 256,
+-    parameter bit          AllowNoncompliantBufferSizes = 1'b0
+-)();
+-  localparam int unsigned ExpectedChunkBytes =
+-      AllowNoncompliantBufferSizes ? BufferNumWords * 4 : 512;
+-  localparam logic [31:0] ExpectedVendorCapabilities = {
+-      AllowNoncompliantBufferSizes, 15'h0, 16'(ExpectedChunkBytes)};
+-
+-  sdhci_fixture #(
+-    .ClkPeriod(ClkPeriod),
+-    .RstCycles(RstCycles),
+-    .BufferNumWords(BufferNumWords),
+-    .AllowNoncompliantBufferSizes(AllowNoncompliantBufferSizes)
+-  ) fixture ();
+-
+-  task automatic wfi(input int unsigned timeout_cycles, string error_context);
+-    fork
+-      begin
+-        fork
+-          begin
+-            fixture.vip.wait_for_interrupt();
+-          end
+-          begin
+-            repeat(timeout_cycles) fixture.vip.wait_for_sdclk();
+-            $fatal(1, "Interrupt timed out waiting for %s", error_context);
+-          end
+-        join_any
+-        disable fork;
+-      end
+-    join
+-  endtask
+-
+-  task automatic check_irq(logic [15:0] expected_normal, logic [15:0] expected_error, string error_context);
+-    logic [15:0] error_interrupt_status;
+-    logic [15:0] error_interrupt_status_all;
+-    logic [15:0] normal_interrupt_status;
+-    logic [15:0] normal_interrupt_status_all;
+-
+-    fixture.vip.obi.get_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    fixture.vip.obi.clear_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    normal_interrupt_status_all = normal_interrupt_status;
+-    error_interrupt_status_all  = error_interrupt_status;
+-
+-    fixture.vip.obi.get_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    while (normal_interrupt_status || error_interrupt_status) begin
+-      fixture.vip.obi.clear_interrupt_status(
+-        .normal_interrupt_status(normal_interrupt_status),
+-        .error_interrupt_status(error_interrupt_status)
+-      );
+-
+-      normal_interrupt_status_all |= normal_interrupt_status;
+-      error_interrupt_status_all  |= error_interrupt_status;
+-
+-      fixture.vip.obi.get_interrupt_status(
+-        .normal_interrupt_status(normal_interrupt_status),
+-        .error_interrupt_status(error_interrupt_status)
+-      );
+-    end
+-
+-    if (error_interrupt_status_all != expected_error) begin
+-      $fatal(1, "Unexpected error interrupt status, got %x, expected %x (%s)", error_interrupt_status_all, expected_error, error_context);
+-    end
+-
+-    if (normal_interrupt_status_all != expected_normal) begin
+-      $fatal(1, "Unexpected normal interrupt status, got %x, expected %x (%s)", normal_interrupt_status_all, expected_normal, error_context);
+-    end
+-  endtask
+-
+-  task automatic wait_irq_bits(logic [15:0] required_normal, logic [15:0] allowed_normal,
+-                               logic [15:0] expected_error, int unsigned timeout_cycles,
+-                               string error_context);
+-    logic [15:0] error_interrupt_status;
+-    logic [15:0] normal_interrupt_status;
+-    logic [15:0] normal_interrupt_status_seen;
+-
+-    normal_interrupt_status_seen = '0;
+-    while ((normal_interrupt_status_seen & required_normal) != required_normal) begin
+-      wfi(timeout_cycles, error_context);
+-      fixture.vip.obi.get_interrupt_status(
+-        .normal_interrupt_status(normal_interrupt_status),
+-        .error_interrupt_status(error_interrupt_status)
+-      );
+-      fixture.vip.obi.clear_interrupt_status(
+-        .normal_interrupt_status(normal_interrupt_status),
+-        .error_interrupt_status(error_interrupt_status)
+-      );
+-
+-      if (error_interrupt_status != expected_error) begin
+-        $fatal(1, "Unexpected error interrupt status, got %x, expected %x (%s)",
+-               error_interrupt_status, expected_error, error_context);
+-      end
+-      if (normal_interrupt_status & ~allowed_normal) begin
+-        $fatal(1, "Unexpected normal interrupt status, got %x, allowed %x (%s)",
+-               normal_interrupt_status, allowed_normal, error_context);
+-      end
+-
+-      normal_interrupt_status_seen |= normal_interrupt_status;
+-    end
+-  endtask
+-
+-  task automatic read_noncompliant_block(output logic [31:0] read_data);
+-    int unsigned words_read;
+-    int unsigned words_left;
+-    int unsigned words_this_chunk;
+-
+-    words_read = 0;
+-    while (words_read < BlockSize / 4) begin
+-      wait_irq_bits(
+-        .required_normal('h20), // noncompliant data ready
+-        .allowed_normal ('h20),
+-        .expected_error ('h0),
+-        .timeout_cycles (BlockSize * 8 + 500),
+-        .error_context  ("noncompliant cmd18 data ready")
+-      );
+-
+-      words_left = (BlockSize / 4) - words_read;
+-      words_this_chunk = (words_left < BufferNumWords) ? words_left : BufferNumWords;
+-      repeat (words_this_chunk) begin
+-        fixture.vip.obi.read_buffer_data(.data(read_data));
+-      end
+-      words_read += words_this_chunk;
+-    end
+-  endtask
+-
+-  initial begin : cmd_response
+-    fixture.vip.wait_for_reset();
+-
+-    // cmd0 with data
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-
+-    // bus is idle for 2 cycles
+-    fixture.vip.wait_for_sdclk();
+-    fixture.vip.sd.send_response_48('d18, 'h3A);
+-
+-    // cmd12 with busy
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-
+-    // bus is idle for 2 cycles
+-    fixture.vip.wait_for_sdclk();
+-    fixture.vip.sd.send_response_48('d12, 'h7A);
+-  end
+-
+-  initial begin : dat_response
+-    logic was_interrupted;
+-    logic [511:0][7:0] block;
+-    block = {
+-      // 512 * 8 bits
+-      // -> 4096
+-      64 {
+-        // 64 bits
+-        {8'hde},
+-        {8'had},
+-        {8'hbe},
+-        {8'hef},
+-        {8'hca},
+-        {8'hfe},
+-        {8'hba},
+-        {8'hbe}
+-      }
+-  };
+-
+-    was_interrupted = 1'b0;
+-    fixture.vip.wait_for_reset();
+-
+-    // wait for the read command
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-
+-    while (was_interrupted == 1'b0) begin
+-      fixture.vip.wait_for_sdclk();
+-      fixture.vip.sd.send_data_block_interruptible(
+-        .block(block),
+-        .block_size(BlockSize),
+-        .is_4_bit(Do4Bit),
+-        .was_interrupted(was_interrupted)
+-      );
+-      repeat(100) fixture.vip.wait_for_sdclk();
+-    end
+-  end
+-
+-  initial begin : obi_driver
+-    logic [31:0] read_data;
+-    logic [31:0] vendor_capabilities;
+-    logic buffer_read_enable, buffer_write_enable;
+-
+-    fixture.vip.wait_for_reset();
+-    fixture.vip.obi.obi_read('h044, 4'b1111, vendor_capabilities);
+-    if (vendor_capabilities != ExpectedVendorCapabilities) begin
+-      $fatal(1, "Unexpected vendor capabilities: got 0x%08x expected 0x%08x",
+-             vendor_capabilities, ExpectedVendorCapabilities);
+-    end
+-
+-    fixture.vip.obi.set_interrupt_status_enable(
+-      .normal_interrupt_status_enable('hFFFF),
+-      .error_interrupt_status_enable('hFFFF),
+-      .finish_transaction(1'b0)
+-    );
+-    fixture.vip.obi.set_interrupt_signal_enable(
+-      .normal_interrupt_signal_enable('hFFFF),
+-      .error_interrupt_signal_enable('hFFFF),
+-      .finish_transaction(1'b0)
+-    );
+-
+-    fixture.vip.obi.set_host_control_1(
+-      .dma_select('0),
+-      .high_speed_enable(1'b1),
+-      .do_4_bit_transfer(Do4Bit),
+-      .finish_transaction(1'b0)
+-    );
+-
+-    fixture.vip.obi.set_frequency_select(
+-      .divider(8'(ClkEnPeriod >> 1)),
+-      .finish_transaction(1'b0)
+-    );
+-    fixture.vip.obi.set_clock_enable(.enable(1'b1), .finish_transaction(1'b0));
+-
+-    fixture.vip.obi.set_transfer_mode(
+-      .is_multi_block(1'b1),
+-      .is_read(1'b1),
+-      .auto_cmd12_enable(1'b0),
+-      .block_count_enable(1'b1),
+-      .dma_enable(1'b0),
+-      .finish_transaction(1'b0)
+-    );
+-
+-    fixture.vip.obi.set_block_size_count(
+-      .block_size(BlockSize),
+-      .block_count(BlockCount),
+-      .finish_transaction(1'b0)
+-    );
+-
+-    fixture.vip.obi.launch_command(
+-      .command_index(6'd18),
+-      .command_type (2'b00), // normal command
+-      .data_present (1'b1),
+-      .index_check_enable(1'b1),
+-      .crc_check_enable(1'b1),
+-      .response_type(2'b10), // 48 bit no busy
+-      .finish_transaction(1'b1)
+-    );
+-
+-    if (AllowNoncompliantBufferSizes) begin
+-      wait_irq_bits(
+-        .required_normal('h01), // cmd complete
+-        .allowed_normal ('h21), // cmd complete and noncompliant per-word data ready
+-        .expected_error ('h0),  // no error
+-        .timeout_cycles (BlockSize * 8 + 500),
+-        .error_context  ("noncompliant cmd18 complete")
+-      );
+-
+-      repeat (BlockCount) begin
+-        read_noncompliant_block(read_data);
+-      end
+-
+-      wait_irq_bits(
+-        .required_normal('h02), // transfer complete
+-        .allowed_normal ('h22), // transfer complete and noncompliant data ready
+-        .expected_error ('h0),  // no error
+-        .timeout_cycles (BlockSize * 8 + 500),
+-        .error_context  ("noncompliant cmd18 transfer complete")
+-      );
+-    end else begin
+-      wfi(200, "cmd18 complete");
+-      check_irq(
+-        .expected_normal('h01), // cmd complete
+-        .expected_error ('h0),  // no error
+-        .error_context("cmd18 complete")
+-      );
+-
+-      wfi(BlockSize * 8 + 500, "first data present");
+-      check_irq(
+-        .expected_normal('h20), // data present
+-        .expected_error ('h0),  // no error
+-        .error_context("first data present")
+-      );
+-
+-      repeat (BlockCount - 1) begin
+-        repeat (BlockSize / 4) begin
+-          fixture.vip.obi.read_buffer_data(.data(read_data));
+-        end
+-        fixture.vip.obi.get_present_status_buffer_enable(
+-          .buffer_read_enable(buffer_read_enable),
+-          .buffer_write_enable(buffer_write_enable)
+-        );
+-        if (!buffer_read_enable) begin
+-          wfi(BlockSize * 8 + 500, "data present during loop");
+-        end
+-        check_irq(
+-          .expected_normal('h20), // data present
+-          .expected_error ('h0),  // no error
+-          .error_context("data present during loop")
+-        );
+-      end
+-      repeat (BlockSize / 4) begin
+-        fixture.vip.obi.read_buffer_data(.data(read_data));
+-      end
+-      wfi(200, "cmd18 transfer complete");
+-      check_irq(
+-        .expected_normal('h02), // transfer complete
+-        .expected_error ('h0),  // no error
+-        .error_context("cmd18 transfer complete")
+-      );
+-    end
+-
+-    fixture.vip.obi.get_present_status_buffer_enable(
+-      .buffer_read_enable(buffer_read_enable),
+-      .buffer_write_enable(buffer_write_enable)
+-    );
+-
+-    if (buffer_read_enable) begin
+-      $fatal(1, "We should no longer have data!");
+-    end
+-
+-    fixture.vip.obi.launch_command(
+-      .command_index(6'd12),
+-      .command_type (2'b00), // normal command
+-      .data_present (1'b0),
+-      .index_check_enable(1'b1),
+-      .crc_check_enable(1'b1),
+-      .response_type(2'b11), // 48 bit with busy
+-      .finish_transaction(1'b1)
+-    );
+-
+-    if (AllowNoncompliantBufferSizes) begin
+-      wait_irq_bits(
+-        .required_normal('h03), // cmd complete and transfer complete
+-        .allowed_normal ('h03),
+-        .expected_error ('h0),  // no error
+-        .timeout_cycles (200),
+-        .error_context  ("cmd12 complete and transfer complete")
+-      );
+-    end else begin
+-      wfi(200, "cmd12 complete and transfer complete");
+-      check_irq(
+-        .expected_normal('h03), // cmd complete
+-        .expected_error ('h0),  // no error
+-        .error_context("cmd12 complete and transfer complete")
+-      );
+-    end
+-
+-    $display("All good");
+-
+-    $finish();
+-  end
+-
+-endmodule
+-
+-module tb_noncompliant_block_read();
+-  tb_block_read #(
+-    .BlockCount(2),
+-    .BufferNumWords(8),
+-    .AllowNoncompliantBufferSizes(1'b1)
+-  ) i_noncompliant_block_read ();
+-endmodule
+diff --git a/src/tb_cmd_timeout.sv b/src/tb_cmd_timeout.sv
+deleted file mode 100644
+index 1cb783c..0000000
+--- a/src/tb_cmd_timeout.sv
++++ /dev/null
+@@ -1,234 +0,0 @@
+-// Copyright 2025 ETH Zurich and University of Bologna.
+-// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+-// SPDX-License-Identifier: SHL-0.51
+-
+-// Authors:
+-// - Axel Vanoni <axvanoni@student.ethz.ch>
+-
+-module tb_cmd_timeout #(
+-  parameter time         ClkPeriod = 50ns,
+-  parameter int unsigned RstCycles = 1,
+-  parameter int unsigned DelayCycles = 4
+-)();
+-  sdhci_fixture #(
+-    .ClkPeriod(ClkPeriod),
+-    .RstCycles(RstCycles)
+-  ) fixture ();
+-
+-  int ClkEnPeriod;
+-  logic [15:0] normal_interrupt_status;
+-  logic [15:0] error_interrupt_status;
+-  logic response_done;
+-
+-  initial begin : configure_tb
+-    if (!$value$plusargs("ClkEnPeriod=%d", ClkEnPeriod)) begin
+-      ClkEnPeriod = 4;
+-    end
+-    $display("Testing timeouts with ClkEnPeriod=%d", ClkEnPeriod);
+-  end : configure_tb
+-
+-  task wfi(input int unsigned timeout_cycles);
+-    // wait for command complete
+-    fork
+-      begin
+-        fork
+-          begin
+-            fixture.vip.wait_for_interrupt();
+-          end
+-          begin
+-            repeat(timeout_cycles) fixture.vip.wait_for_sdclk();
+-            $fatal("Interrupt timed out");
+-          end
+-        join_any
+-        disable fork;
+-      end
+-    join
+-  endtask
+-
+-  initial begin
+-    fixture.vip.wait_for_reset();
+-    fixture.vip.obi.set_interrupt_status_enable(
+-      // enable command complete
+-      .normal_interrupt_status_enable('h0001),
+-      // enable data + command timeout error
+-      .error_interrupt_status_enable('h0011),
+-      .finish_transaction(1'b0)
+-    );
+-    fixture.vip.obi.set_interrupt_signal_enable(
+-      // enable command complete
+-      .normal_interrupt_signal_enable('h0001),
+-      // enable data + command timeout error
+-      .error_interrupt_signal_enable('h0011),
+-      .finish_transaction(1'b0)
+-    );
+-    fixture.vip.obi.set_frequency_select(
+-      .divider(ClkEnPeriod >> 1),
+-      .finish_transaction(1'b0)
+-    );
+-    fixture.vip.obi.set_clock_enable(.enable(1'b1), .finish_transaction(1'b0));
+-    // prepare identification command
+-    fixture.vip.obi.set_transfer_mode(
+-      .is_multi_block(1'b0),
+-      .is_read(1'b0),
+-      .auto_cmd12_enable(1'b0),
+-      .block_count_enable(1'b0),
+-      .dma_enable(1'b0),
+-      .finish_transaction(1'b1)
+-    );
+-
+-    repeat (DelayCycles) fixture.vip.wait_for_clk();
+-
+-    fixture.vip.obi.launch_command(
+-      .command_index(6'd1),
+-      .command_type (2'b00), // normal command
+-      .data_present (1'b0),
+-      .index_check_enable(1'b1),
+-      .crc_check_enable(1'b1),
+-      .response_type(2'b01), // 136bit
+-      .finish_transaction(1'b1)
+-    );
+-
+-    wfi(400);
+-
+-    fixture.vip.obi.get_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    fixture.vip.obi.clear_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    if (|(error_interrupt_status)) begin
+-      $fatal("Command timed out");
+-    end
+-
+-    fixture.vip.obi.launch_command(
+-      .command_index(6'd1),
+-      .command_type (2'b00), // normal command
+-      .data_present (1'b0),
+-      .index_check_enable(1'b1),
+-      .crc_check_enable(1'b1),
+-      .response_type(2'b01), // 136bit
+-      .finish_transaction(1'b1)
+-    );
+-
+-    wfi(400);
+-
+-    fixture.vip.obi.get_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    fixture.vip.obi.clear_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    if (error_interrupt_status != 'h0001) begin
+-      $fatal("Command did not time out");
+-    end
+-
+-    wait (response_done);
+-
+-    fixture.vip.obi.launch_command(
+-      .command_index(6'd0),
+-      .command_type (2'b00), // normal command
+-      .data_present (1'b0),
+-      .index_check_enable(1'b1),
+-      .crc_check_enable(1'b1),
+-      .response_type(2'b10), // 48bit no busy
+-      .finish_transaction(1'b1)
+-    );
+-
+-    wfi(400);
+-
+-    fixture.vip.obi.get_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-    
+-    fixture.vip.obi.clear_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    if (|(error_interrupt_status)) begin
+-      $fatal("Command timed out");
+-    end
+-
+-    fixture.vip.obi.launch_command(
+-      .command_index(6'd0),
+-      .command_type (2'b00), // normal command
+-      .data_present (1'b0),
+-      .index_check_enable(1'b1),
+-      .crc_check_enable(1'b1),
+-      .response_type(2'b10), // 48bit no busy
+-      .finish_transaction(1'b1)
+-    );
+-
+-    wfi(400);
+-
+-    fixture.vip.obi.get_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    fixture.vip.obi.clear_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    if (error_interrupt_status != 'h0001) begin
+-      $fatal("Command did not time out");
+-    end
+-
+-    wait (response_done);
+-
+-    $display("All good");
+-    $finish();
+-  end
+-
+-  initial begin
+-    response_done = 1'b0;
+-    fixture.vip.wait_for_reset();
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-    // the response must come after 5 idle cycles on the bus
+-    repeat(5) fixture.vip.wait_for_sdclk();
+-    fixture.vip.sd.send_response_136(127'h7F78_7068_6058_5048_4038_3028_2018_1008);
+-
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-    // the response must come after 5 idle cycles on the bus
+-    // so after 6 it must time out
+-    repeat(6) fixture.vip.wait_for_sdclk();
+-    fixture.vip.sd.send_response_136(127'h7F78_7068_6058_5048_4038_3028_2018_1008);
+-
+-    response_done = 1'b1;
+-    fixture.vip.wait_for_sdclk();
+-    response_done = 1'b0;
+-
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-    // the response must come within 64 cycles
+-    repeat(64) fixture.vip.wait_for_sdclk();
+-    fixture.vip.sd.send_response_48(
+-      .index(6'd0),
+-      .crc  (7'h0)
+-    );
+-
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-    // the response must come within 64 cycles
+-    // so after 65 it must time out
+-    repeat(65) fixture.vip.wait_for_sdclk();
+-    fixture.vip.sd.send_response_48(
+-      .index(6'd0),
+-      .crc  (7'h0)
+-    );
+-    response_done = 1'b1;
+-  end
+-
+-endmodule
+diff --git a/src/tb_dat.sv b/src/tb_dat.sv
+deleted file mode 100644
+index d26408d..0000000
+--- a/src/tb_dat.sv
++++ /dev/null
+@@ -1,254 +0,0 @@
+-// Copyright 2025 ETH Zurich and University of Bologna.
+-// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+-// SPDX-License-Identifier: SHL-0.51
+-
+-// Authors:
+-// - Micha Wehrli <miwehrli@student.ethz.ch>
+-
+-module tb_dat #(
+-    parameter time         ClkPeriod     = 50ns,
+-    parameter int unsigned RstCycles     = 1
+-  )();
+-  localparam int unsigned TestClkPreDiv = 2;
+-
+-  function automatic logic [7:0] encode_frequency_select(input int unsigned min_effective_div);
+-    int unsigned sdhci_div;
+-    int unsigned effective_div;
+-    sdhci_div = 1;
+-    effective_div = TestClkPreDiv;
+-    if (effective_div < 2) begin
+-      effective_div = 2;
+-    end
+-    while (effective_div < min_effective_div && sdhci_div < 256) begin
+-      sdhci_div <<= 1;
+-      effective_div = TestClkPreDiv * sdhci_div;
+-      if (effective_div[0]) begin
+-        effective_div++;
+-      end
+-    end
+-    return (sdhci_div == 1) ? 8'h00 : 8'(sdhci_div >> 1);
+-  endfunction
+-
+-  logic clk;
+-  logic rst_n;
+-
+-  logic fetch_en_i;
+-  logic status_o;
+-
+-  clk_rst_gen #(
+-    .ClkPeriod    ( ClkPeriod ),
+-    .RstClkCycles ( RstCycles )
+-  ) i_clk_rst_sys (
+-    .clk_o  ( clk   ),
+-    .rst_no ( rst_n )
+-  );
+-
+-  sdhci_reg_pkg::sdhci_reg2hw_t reg2hw_i;
+-
+-
+-  logic sd_clk, sd_clk_en_p, sd_clk_en_n, div_1;
+-  sd_clk_generator sd_clk_div (
+-    .clk_i  (clk),
+-    .rst_ni (rst_n),
+-    .clear_i(1'b0),
+-    
+-    .reg2hw_i,
+-
+-    .pause_sd_clk_i ('0),
+-    .sd_clk_o       (sd_clk),
+-
+-    .clk_en_p_o (sd_clk_en_p),
+-    .clk_en_n_o (sd_clk_en_n),
+-    .div_1_o    (div_1),
+-
+-    .sd_clk_stable_o ()
+-  );
+-
+-  tri1 [3:0] dat;
+-
+-  logic [31:0] data_i;
+-  logic start_write;
+-  logic next_word_o, done_write, dat_en_o;
+-  logic [3:0] dat_o;
+-  assign dat = dat_en_o ? dat_o : 'z;
+-
+-  localparam int MaxBlockBitSize = 14;
+-
+-  logic UseWideBus;
+-  logic [MaxBlockBitSize-1:0] BlockSize;
+-
+-  dat_write #(
+-    .MaxBlockBitSize (MaxBlockBitSize)
+-  ) i_dat_write (
+-    .clk_i (clk),
+-    .sd_clk_en_p_i (sd_clk_en_p),
+-    .sd_clk_en_n_i (sd_clk_en_n),
+-    .div_1_i       (div_1),
+-    .rst_ni (rst_n),
+-    .clear_i(1'b0),
+-
+-    .start_i (start_write),
+-    .block_size_i (MaxBlockBitSize'(BlockSize)),
+-    .bus_width_is_4_i (UseWideBus),
+-
+-    .data_i,
+-    .next_word_o,
+-
+-    .done_o        (done_write),
+-    .crc_err_o     (),
+-    .end_bit_err_o (),
+-    .data_timeout_o(),
+-    .waiting_o     (),
+-
+-    .dat0_i (dat[0]),
+-    .dat_o,
+-    .dat_en_o
+-  );
+-
+-  logic start_read, done_read, data_valid_o, done_o, crc_err_o, end_bit_err_o;
+-  logic [31:0] data_o;
+-  dat_read #(
+-    .MaxBlockBitSize (MaxBlockBitSize)
+-  ) i_dat_read (
+-    .clk_i (clk),
+-    .sd_clk_en_i (sd_clk_en_p),
+-    .rst_ni (rst_n),
+-    .clear_i(1'b0),
+-    .dat_i (dat),
+-
+-    .start_i (start_read),
+-    .timeout_i (1'b0),
+-    .block_size_i (MaxBlockBitSize'(BlockSize)),
+-    .bus_width_is_4_i (UseWideBus),
+-
+-    .data_valid_o,
+-    .data_o,
+-
+-    .done_o (done_read),
+-    .crc_err_o,
+-    .end_bit_err_o,
+-    .waiting_o ()
+-  );
+-
+-  /////////////////
+-  //  Testbench  //
+-  /////////////////
+-
+-  always begin
+-    if (done_read && crc_err_o) begin
+-      $error("CRC Error");
+-      @(negedge clk)
+-      $fatal();
+-    end
+-    if (done_read && end_bit_err_o) begin
+-      $error("End Bit Error");
+-      @(negedge clk)
+-      $fatal();
+-    end
+-    @(negedge clk);
+-  end
+-
+-
+-  logic [31:0] entries [$];
+-  int ClkEnPeriod, remainingBlocks;
+-  int watchdog_cycles;
+-  logic [31:0] got, want;
+-  initial begin
+-    $timeformat(-9, 0, "ns", 12);
+-    if ($test$plusargs("vcd")) begin
+-      $dumpfile("tb_dat.vcd");
+-      $dumpvars(0);
+-    end
+-
+-    if (!$value$plusargs("UseWideBus=%d", UseWideBus)) begin
+-      UseWideBus = 1;
+-    end
+-    if (!$value$plusargs("ClkEnPeriod=%d", ClkEnPeriod)) begin
+-      ClkEnPeriod = 3;
+-    end
+-    if (!$value$plusargs("BlockSize=%d", BlockSize)) begin
+-      BlockSize = 128;
+-    end
+-
+-    reg2hw_i = '0;
+-    reg2hw_i.clock_control.sd_clock_enable.q = 1;
+-    reg2hw_i.clock_control.sdclk_frequency_select.q = encode_frequency_select(ClkEnPeriod);
+-
+-    $display("Testing dat line with UseWideBus=%d, BlockSize=%d, ClkEnPeriod=%d", UseWideBus, BlockSize, ClkEnPeriod);
+-
+-    #ClkPeriod;
+-
+-    @(negedge sd_clk);
+-
+-    start_write = '1;
+-    start_read = '1;
+-
+-    data_i = $urandom();
+-    // $display("data_i = %h", data_i);
+-    entries.push_back(data_i);
+-
+-    @(negedge sd_clk);
+-
+-    start_write = '0;
+-    start_read = '0;
+-
+-    remainingBlocks = BlockSize;
+-    watchdog_cycles = 0;
+-    while (!done_read)
+-    begin
+-
+-      if (next_word_o)
+-      begin
+-        data_i = $urandom();
+-        // $display("data_i = %h", data_i);
+-        entries.push_back(data_i);
+-      end
+-      if (data_valid_o) begin
+-        // $display("data_o = %h", data_o);
+-        got = data_o;
+-        want = entries[0];
+-        unique case (remainingBlocks % 4)
+-          0: ;
+-          1: begin
+-            got[31:8] = '0;
+-            want[31:8] = '0;
+-          end
+-          2: begin
+-            got[31:15] = '0;
+-            want[31:15] = '0;
+-          end
+-          3: begin
+-            got[31:24] = '0;
+-            want[31:24] = '0;
+-          end
+-        endcase
+-        if (got != want) begin
+-          $display("Got %h, wanted %h", got, want);
+-          @(negedge sd_clk)
+-          @(negedge sd_clk)
+-          @(negedge sd_clk)
+-          $fatal();
+-        end
+-
+-        void'(entries.pop_front());
+-        remainingBlocks -= 4;
+-      end
+-
+-      @(negedge sd_clk);
+-      @(posedge clk);
+-      #1ns;
+-      watchdog_cycles++;
+-      if (watchdog_cycles > (BlockSize * (UseWideBus ? 16 : 64) + 1000)) begin
+-        $fatal(1, "DAT transfer timed out");
+-      end
+-    end
+-
+-    repeat(50) @(posedge clk);
+-
+-    if ($test$plusargs("vcd")) begin
+-      $dumpflush;
+-    end
+-    $finish();
+-  end
+-
+-endmodule
+diff --git a/src/tb_dat_buffer_sizes.sv b/src/tb_dat_buffer_sizes.sv
+deleted file mode 100644
+index 11a66b3..0000000
+--- a/src/tb_dat_buffer_sizes.sv
++++ /dev/null
+@@ -1,388 +0,0 @@
+-// Copyright 2025 ETH Zurich and University of Bologna.
+-// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+-// SPDX-License-Identifier: SHL-0.51
+-
+-`include "defines.svh"
+-
+-module tb_dat_buffer_sizes #(
+-  parameter time ClkPeriod = 50ns
+-)();
+-  logic clk;
+-  logic rst_n;
+-  logic [2:0] done;
+-
+-  clk_rst_gen #(
+-    .ClkPeriod    ( ClkPeriod ),
+-    .RstClkCycles ( 1 )
+-  ) i_clk_rst_sys (
+-    .clk_o  ( clk   ),
+-    .rst_no ( rst_n )
+-  );
+-
+-  tb_dat_buffer_size_case #(
+-    .NumWords(8),
+-    .AllowNoncompliantBufferSizes(1'b1)
+-  ) i_32b_noncompliant (
+-    .clk_i  (clk),
+-    .rst_ni (rst_n),
+-    .done_o (done[0])
+-  );
+-
+-  tb_dat_buffer_size_case #(.NumWords(128)) i_512b (
+-    .clk_i  (clk),
+-    .rst_ni (rst_n),
+-    .done_o (done[1])
+-  );
+-
+-  tb_dat_buffer_size_case #(.NumWords(256)) i_1024b (
+-    .clk_i  (clk),
+-    .rst_ni (rst_n),
+-    .done_o (done[2])
+-  );
+-
+-  initial begin
+-    wait(&done);
+-    repeat (10) @(posedge clk);
+-    $finish();
+-  end
+-endmodule
+-
+-module tb_dat_buffer_size_case #(
+-  parameter int unsigned NumWords = 8,
+-  parameter int unsigned BlockSize = 512,
+-  parameter bit          AllowNoncompliantBufferSizes = 1'b0
+-) (
+-  input  logic clk_i,
+-  input  logic rst_ni,
+-  output logic done_o
+-);
+-  localparam int unsigned BlockWords = BlockSize / 4;
+-
+-  logic clear;
+-  logic read_operation;
+-  logic write_operation;
+-  logic read_ready;
+-  logic read_valid;
+-  logic [31:0] read_data;
+-  logic write_valid;
+-  logic [31:0] write_data;
+-  logic write_ready;
+-  logic empty;
+-  logic [31:0] buffer_data_port_d;
+-  logic buffer_data_port_read_ready;
+-  logic buffer_data_port_write_ready;
+-  logic buffer_read_enable;
+-  logic buffer_write_enable;
+-  logic [15:0] block_count;
+-
+-  logic [9:0] block_size;
+-  logic [15:0] programmed_block_count;
+-  logic multi_block;
+-  logic block_count_enable;
+-  logic buffer_data_port_re;
+-  logic buffer_data_port_qe;
+-  logic [31:0] buffer_data_port_q;
+-  `writable_reg_t() buffer_read_enable_hw;
+-  `writable_reg_t() buffer_write_enable_hw;
+-  `writable_reg_t([15:0]) block_count_hw;
+-
+-  assign buffer_read_enable = buffer_read_enable_hw.d;
+-  assign buffer_write_enable = buffer_write_enable_hw.d;
+-  assign block_count = block_count_hw.d;
+-
+-  dat_buffer #(
+-    .NumWords        (NumWords),
+-    .MaxBlockBitSize (10),
+-    .AllowNoncompliantBufferSizes(AllowNoncompliantBufferSizes)
+-  ) i_dat_buffer (
+-    .clk_i,
+-    .rst_ni,
+-    .clear_i           (clear),
+-    .read_operation_i  (read_operation),
+-    .write_operation_i (write_operation),
+-    .read_ready_i      (read_ready),
+-    .read_valid_o      (read_valid),
+-    .read_data_o       (read_data),
+-    .write_valid_i     (write_valid),
+-    .write_data_i      (write_data),
+-    .write_ready_o     (write_ready),
+-    .empty_o           (empty),
+-    .buffer_data_port_read_ready_o(buffer_data_port_read_ready),
+-    .buffer_data_port_write_ready_o(buffer_data_port_write_ready),
+-    .block_size_i      (block_size),
+-    .block_count_i     (programmed_block_count),
+-    .multi_block_i     (multi_block),
+-    .block_count_enable_i(block_count_enable),
+-    .buffer_data_port_re_i(buffer_data_port_re),
+-    .buffer_data_port_qe_i(buffer_data_port_qe),
+-    .buffer_data_port_q_i(buffer_data_port_q),
+-    .buffer_data_port_d_o(buffer_data_port_d),
+-    .buffer_read_enable_o(buffer_read_enable_hw),
+-    .buffer_write_enable_o(buffer_write_enable_hw),
+-    .block_count_o     (block_count_hw)
+-  );
+-
+-  task automatic init_inputs();
+-    clear = 1'b0;
+-    read_operation = 1'b0;
+-    write_operation = 1'b0;
+-    read_ready = 1'b0;
+-    write_valid = 1'b0;
+-    write_data = '0;
+-    block_size = BlockSize;
+-    programmed_block_count = 16'd2;
+-    multi_block = 1'b1;
+-    block_count_enable = 1'b0;
+-    buffer_data_port_re = 1'b0;
+-    buffer_data_port_qe = 1'b0;
+-    buffer_data_port_q = '0;
+-  endtask
+-
+-  task automatic tick();
+-    @(posedge clk_i);
+-    #1ns;
+-  endtask
+-
+-  task automatic pulse_clear();
+-    clear = 1'b1;
+-    tick();
+-    clear = 1'b0;
+-    tick();
+-  endtask
+-
+-  task automatic test_default_read_side();
+-    read_operation = 1'b1;
+-    tick();
+-
+-    for (int unsigned i = 0; i < BlockWords - 1; i++) begin
+-      repeat (10) begin
+-        if (write_ready) begin
+-          break;
+-        end
+-        tick();
+-      end
+-      if (!write_ready) begin
+-        $fatal(1, "read-side buffer did not become writable for NumWords=%0d", NumWords);
+-      end
+-      write_data = 32'h1000_0000 + i;
+-      write_valid = 1'b1;
+-      tick();
+-    end
+-
+-    write_valid = 1'b0;
+-    tick();
+-    if (buffer_read_enable) begin
+-      $fatal(1, "buffer_read_enable asserted before one chunk for NumWords=%0d", NumWords);
+-    end
+-
+-    write_data = 32'h1000_0000 + BlockWords - 1;
+-    write_valid = 1'b1;
+-    tick();
+-    write_valid = 1'b0;
+-    tick();
+-
+-    if (!buffer_read_enable) begin
+-      $fatal(1, "buffer_read_enable did not assert after one block for NumWords=%0d", NumWords);
+-    end
+-
+-    for (int unsigned i = 0; i < BlockWords; i++) begin
+-      buffer_data_port_re = 1'b1;
+-      tick();
+-      buffer_data_port_re = 1'b0;
+-      write_valid = 1'b0;
+-      tick();
+-    end
+-
+-    read_operation = 1'b0;
+-  endtask
+-
+-  task automatic test_default_write_side();
+-    write_operation = 1'b1;
+-    tick();
+-    if (!buffer_write_enable) begin
+-      $fatal(1, "buffer_write_enable not asserted on empty buffer for NumWords=%0d", NumWords);
+-    end
+-
+-    for (int unsigned i = 0; i < BlockWords; i++) begin
+-      buffer_data_port_q = 32'h2000_0000 + i;
+-      buffer_data_port_qe = 1'b1;
+-      tick();
+-      buffer_data_port_qe = 1'b0;
+-      tick();
+-    end
+-
+-    if (BlockWords == NumWords && buffer_write_enable) begin
+-      $fatal(1, "buffer_write_enable remained asserted on full buffer for NumWords=%0d", NumWords);
+-    end
+-
+-    for (int unsigned i = 0; i < BlockWords; i++) begin
+-      if (!read_valid) begin
+-        $fatal(1, "read_valid deasserted before buffered chunk drained for NumWords=%0d", NumWords);
+-      end
+-      read_ready = 1'b1;
+-      tick();
+-      read_ready = 1'b0;
+-      tick();
+-    end
+-
+-    write_operation = 1'b0;
+-  endtask
+-
+-  task automatic test_noncompliant_read_side();
+-    int unsigned produced;
+-    int unsigned consumed;
+-    int unsigned cycles;
+-
+-    read_operation = 1'b1;
+-    produced = 0;
+-    consumed = 0;
+-    cycles = 0;
+-    tick();
+-
+-    while (consumed < BlockWords) begin
+-      logic accepted_write;
+-      logic accepted_read;
+-
+-      write_valid = 1'b0;
+-      buffer_data_port_re = 1'b0;
+-
+-      if (produced < BlockWords && write_ready) begin
+-        write_data = 32'h3000_0000 + produced;
+-        write_valid = 1'b1;
+-      end else if (buffer_data_port_read_ready) begin
+-        buffer_data_port_re = 1'b1;
+-      end
+-
+-      accepted_write = write_valid && write_ready;
+-      accepted_read = buffer_data_port_re && buffer_data_port_read_ready;
+-      tick();
+-      if (accepted_write) begin
+-        produced++;
+-      end
+-      if (accepted_read) begin
+-        consumed++;
+-      end
+-
+-      cycles++;
+-      if (cycles > BlockWords * 16) begin
+-        $fatal(1, "noncompliant read-side buffer stalled for NumWords=%0d produced=%0d consumed=%0d",
+-               NumWords, produced, consumed);
+-      end
+-    end
+-
+-    write_valid = 1'b0;
+-    buffer_data_port_re = 1'b0;
+-    read_operation = 1'b0;
+-  endtask
+-
+-  task automatic test_noncompliant_write_stall_resume();
+-    write_operation = 1'b1;
+-    tick();
+-
+-    for (int unsigned i = 0; i < NumWords; i++) begin
+-      if (!buffer_data_port_write_ready) begin
+-        $fatal(1, "noncompliant write-side buffer became full too early for NumWords=%0d", NumWords);
+-      end
+-      buffer_data_port_q = 32'h4000_0000 + i;
+-      buffer_data_port_qe = 1'b1;
+-      tick();
+-    end
+-    buffer_data_port_qe = 1'b0;
+-    tick();
+-
+-    if (buffer_data_port_write_ready) begin
+-      $fatal(1, "noncompliant write-side Buffer Data Port did not stall when full for NumWords=%0d", NumWords);
+-    end
+-
+-    buffer_data_port_q = 32'h4BAD_F00D;
+-    buffer_data_port_qe = 1'b1;
+-    tick();
+-    buffer_data_port_qe = 1'b0;
+-
+-    read_ready = 1'b1;
+-    tick();
+-    read_ready = 1'b0;
+-
+-    repeat (4) begin
+-      if (buffer_data_port_write_ready) begin
+-        break;
+-      end
+-      tick();
+-    end
+-    if (!buffer_data_port_write_ready) begin
+-      $fatal(1, "noncompliant write-side Buffer Data Port did not resume for NumWords=%0d", NumWords);
+-    end
+-
+-    write_operation = 1'b0;
+-  endtask
+-
+-  task automatic test_noncompliant_write_side();
+-    int unsigned produced;
+-    int unsigned consumed;
+-    int unsigned cycles;
+-
+-    write_operation = 1'b1;
+-    produced = 0;
+-    consumed = 0;
+-    cycles = 0;
+-    tick();
+-
+-    while (consumed < BlockWords) begin
+-      logic accepted_write;
+-      logic accepted_read;
+-
+-      buffer_data_port_qe = 1'b0;
+-      read_ready = 1'b0;
+-
+-      if (produced < BlockWords && buffer_data_port_write_ready) begin
+-        buffer_data_port_q = 32'h5000_0000 + produced;
+-        buffer_data_port_qe = 1'b1;
+-      end else if (read_valid) begin
+-        read_ready = 1'b1;
+-      end
+-
+-      accepted_write = buffer_data_port_qe && buffer_data_port_write_ready;
+-      accepted_read = read_ready && read_valid;
+-      tick();
+-      if (accepted_write) begin
+-        produced++;
+-      end
+-      if (accepted_read) begin
+-        consumed++;
+-      end
+-
+-      cycles++;
+-      if (cycles > BlockWords * 16) begin
+-        $fatal(1, "noncompliant write-side buffer stalled for NumWords=%0d produced=%0d consumed=%0d",
+-               NumWords, produced, consumed);
+-      end
+-    end
+-
+-    buffer_data_port_qe = 1'b0;
+-    read_ready = 1'b0;
+-    write_operation = 1'b0;
+-  endtask
+-
+-  initial begin
+-    done_o = 1'b0;
+-    init_inputs();
+-    wait(rst_ni);
+-    tick();
+-
+-    if (AllowNoncompliantBufferSizes) begin
+-      pulse_clear();
+-      test_noncompliant_read_side();
+-      pulse_clear();
+-      test_noncompliant_write_stall_resume();
+-      pulse_clear();
+-      test_noncompliant_write_side();
+-    end else begin
+-      pulse_clear();
+-      test_default_read_side();
+-      pulse_clear();
+-      test_default_write_side();
+-    end
+-
+-    done_o = 1'b1;
+-  end
+-endmodule
+diff --git a/src/tb_dat_timeout.sv b/src/tb_dat_timeout.sv
+deleted file mode 100644
+index cedd408..0000000
+--- a/src/tb_dat_timeout.sv
++++ /dev/null
+@@ -1,224 +0,0 @@
+-// Copyright 2025 ETH Zurich and University of Bologna.
+-// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+-// SPDX-License-Identifier: SHL-0.51
+-
+-// Authors:
+-// - Axel Vanoni <axvanoni@student.ethz.ch>
+-
+-module tb_dat_timeout #(
+-  parameter time         ClkPeriod = 50ns,
+-  parameter int unsigned RstCycles = 1,
+-  parameter int unsigned TimeoutDivider = 13
+-)();
+-  sdhci_fixture #(
+-    .ClkPeriod     (ClkPeriod),
+-    .RstCycles     (RstCycles),
+-    .TimeoutDivider(TimeoutDivider)
+-  ) fixture ();
+-
+-  int ClkEnPeriod;
+-  logic [15:0] normal_interrupt_status;
+-  logic [15:0] error_interrupt_status;
+-  logic response_done;
+-
+-  initial begin : configure_tb
+-    if (!$value$plusargs("ClkEnPeriod=%d", ClkEnPeriod)) begin
+-      ClkEnPeriod = 4;
+-    end
+-    $display("Testing timeouts with ClkEnPeriod=%d", ClkEnPeriod);
+-  end : configure_tb
+-
+-  task wfi(input int unsigned timeout_cycles);
+-    fork
+-      begin
+-        fork
+-          begin
+-            fixture.vip.wait_for_interrupt();
+-          end
+-          begin
+-            repeat(timeout_cycles) fixture.vip.wait_for_sdclk();
+-            $fatal(1, "Interrupt timed out");
+-          end
+-        join_any
+-        disable fork;
+-      end
+-    join
+-  endtask
+-
+-  initial begin
+-    fixture.vip.wait_for_reset();
+-    fixture.vip.obi.set_interrupt_status_enable(
+-      // enable command complete and transaction complete
+-      .normal_interrupt_status_enable('h0003),
+-      // enable data + command timeout error
+-      .error_interrupt_status_enable('h0011),
+-      .finish_transaction(1'b0)
+-    );
+-    fixture.vip.obi.set_interrupt_signal_enable(
+-      // enable command complete and transaction complete
+-      .normal_interrupt_signal_enable('h0003),
+-      // enable data + command timeout error
+-      .error_interrupt_signal_enable('h0011),
+-      .finish_transaction(1'b0)
+-    );
+-    fixture.vip.obi.set_frequency_select(
+-      .divider(ClkEnPeriod >> 1),
+-      .finish_transaction(1'b0)
+-    );
+-    fixture.vip.obi.set_data_timeout(.exponent_minus_13(4'b0), .finish_transaction(1'b0));
+-    fixture.vip.obi.set_clock_enable(.enable(1'b1), .finish_transaction(1'b0));
+-    // prepare command
+-    fixture.vip.obi.set_transfer_mode(
+-      .is_multi_block(1'b0),
+-      .is_read(1'b0),
+-      .auto_cmd12_enable(1'b0),
+-      .block_count_enable(1'b0),
+-      .dma_enable(1'b0),
+-      .finish_transaction(1'b0)
+-    );
+-    fixture.vip.obi.launch_command(
+-      .command_index(6'd0),
+-      .command_type (2'b00), // normal command
+-      .data_present (1'b0),
+-      .index_check_enable(1'b1),
+-      .crc_check_enable(1'b1),
+-      .response_type(2'b11), // 48bit busy
+-      .finish_transaction(1'b1)
+-    );
+-
+-    wfi(200);
+-
+-    fixture.vip.obi.get_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    fixture.vip.obi.clear_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    if (error_interrupt_status != 'h0000) begin
+-      $fatal(1, "Some error occured during the transaction");
+-    end
+-
+-    if (normal_interrupt_status != 'h0001) begin
+-      $fatal(1, "Interrupt status wrong. Should be command complete ('h1), but got %x", normal_interrupt_status);
+-    end
+-
+-    wfi(400);
+-
+-    fixture.vip.obi.get_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    fixture.vip.obi.clear_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    if (error_interrupt_status != 'h0000) begin
+-      $fatal(1, "Some error occured during the transaction");
+-    end
+-
+-    if (normal_interrupt_status != 'h0002) begin
+-      $fatal(1, "Interrupt status wrong. Should be transfer complete ('h2), but got %x", normal_interrupt_status);
+-    end
+-
+-    fixture.vip.obi.launch_command(
+-      .command_index(6'd0),
+-      .command_type (2'b00), // normal command
+-      .data_present (1'b0),
+-      .index_check_enable(1'b1),
+-      .crc_check_enable(1'b1),
+-      .response_type(2'b11), // 48bit busy
+-      .finish_transaction(1'b1)
+-    );
+-
+-    wfi(200);
+-
+-    fixture.vip.obi.get_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    fixture.vip.obi.clear_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    if (error_interrupt_status != 'h0000) begin
+-      $fatal(1, "Some error occured during the transaction");
+-    end
+-
+-    if (normal_interrupt_status != 'h0001) begin
+-      $fatal(1, "Interrupt status wrong. Should be command complete ('h1), but got %x", normal_interrupt_status);
+-    end
+-
+-    // make sure that the timeout does not come earlier
+-    repeat((TimeoutDivider) * (2 << 12) - 1000 * ClkEnPeriod) fixture.vip.wait_for_clk();
+-    // if the timeout comes too early, we will have missed it by now
+-    wfi(2000 * ClkEnPeriod);
+-
+-    fixture.vip.obi.get_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    fixture.vip.obi.clear_interrupt_status(
+-      .normal_interrupt_status(normal_interrupt_status),
+-      .error_interrupt_status(error_interrupt_status)
+-    );
+-
+-    if (error_interrupt_status != 'h0010) begin
+-      $fatal(1, "Error interrupt status wrong. Should be data timeout ('h10), but got %x", error_interrupt_status);
+-    end
+-
+-    if (normal_interrupt_status != 'h8000) begin
+-      $fatal(1, "Normal interrupt status wrong. Should be error interrupt ('h8000), but got %x", normal_interrupt_status);
+-    end
+-
+-    wait (response_done);
+-    $display("All good");
+-    $finish();
+-  end
+-
+-  initial begin
+-    response_done = 1'b0;
+-    fixture.vip.wait_for_reset();
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-    // the response must come within 64 cycles
+-    fixture.vip.wait_for_sdclk(); // cycle 1
+-    fixture.vip.sd.claim_busy();     // cycle 2
+-    repeat(61) fixture.vip.wait_for_sdclk(); // cycles 3-63
+-    fixture.vip.sd.send_response_48(
+-      .index(6'd0),
+-      .crc  (7'h0)
+-    );
+-
+-    repeat(300) fixture.vip.wait_for_sdclk();
+-    fixture.vip.sd.release_busy();
+-
+-    response_done = 1'b1;
+-    fixture.vip.wait_for_clk();
+-    response_done = 1'b0;
+-
+-    fixture.vip.sd.wait_for_cmd_held();
+-    fixture.vip.sd.wait_for_cmd_released();
+-    // the response must come within 64 cycles
+-    fixture.vip.wait_for_sdclk(); // cycle 1
+-    fixture.vip.sd.claim_busy();     // cycle 2
+-    repeat(61) fixture.vip.wait_for_sdclk(); // cycles 3-63
+-    fixture.vip.sd.send_response_48(
+-      .index(6'd0),
+-      .crc  (7'h0)
+-    );
+-
+-    // trigger the timeout
+-    repeat(TimeoutDivider * (2<<12) + 50) fixture.vip.wait_for_clk();
+-    response_done = 1'b1;
+-  end
+-
+-endmodule
+diff --git a/src/tb_driver_crc.sv b/src/tb_driver_crc.sv
+deleted file mode 100644
+index 1545e15..0000000
+--- a/src/tb_driver_crc.sv
++++ /dev/null
+@@ -1,72 +0,0 @@
+-module tb_driver_crc();
+-
+-  sdhci_sd_driver driver (
+-    .sd_clk_i('0),
+-    .sd_cmd_o(),
+-    .sd_cmd_i('0),
+-    .sd_cmd_en_i('0),
+-    .sd_dat_o(),
+-    .sd_dat_i('0),
+-    .sd_dat_en_i('0)
+-  );
+-
+-  function check(
+-    logic [4095:0] data,
+-    int data_length,
+-    logic [15:0] expected
+-  );
+-
+-    logic [15:0] actual;
+-    actual = driver.calculate_crc16(
+-      .data(data),
+-      .data_length(data_length)
+-    );
+-
+-    if (actual != expected) begin
+-      $fatal(1, "Expected a CRC of %04x, but got %04x, input was %x", expected, actual, data);
+-    end
+-  endfunction
+-
+-
+-  initial begin
+-    check(
+-      .data('0),
+-      .data_length(4096),
+-      .expected('0)
+-    );
+-    check(
+-      .data('h1),
+-      .data_length(4096),
+-      .expected('h1021)
+-    );
+-
+-    check( // polynomial should give 0
+-      .data('h011021),
+-      .data_length(17),
+-      .expected('0)
+-    );
+-
+-    check(
+-      .data('h01c2b04ae3c8d7f821a752c1e43a15),
+-      .data_length(30*4),
+-      .expected('h4716)
+-    );
+-
+-    check(
+-      .data('he9538155b17a78835f930faeff4f65dff886b379ede29d835e86015b4fbcdee866822c04261070d21c491dde1e5ccc34f1f0a62cf7966f5cfaba1ba46281dd8623732c90982f9dc046d259aab17e77926c2718f47e038bd8fb0cfa30d790481ac80f8ae8a4665465489d7e0e6457a0b3d669ca263f12509e328a21a0e831a3ed5a940f652802a7b665d7cdfdcfef946ae7944be2de8002d6c5e5d48c1556331fba36f821560a29b9aef06bf1f071da91acba8b0facd46c1b2508ee70e829536c8ad130d2148b647490af8ba84321ef11e74a48933215504eacc79d4e10757e537ed26c7664d7cb995fefec69203c5ed1364f5c19f1796e7568b1e93cfb7169493ed34abeb03d1187ec0e4f98710ee00952c9c624bbaac4b73af0411305decb65330b80eaedd778e1f30a71f9804557664585468373c5d00e0d2915ffa086622d7f49f6b956e1d7f0bee04d4ac7ec3c4c0ede48a4da72a92fb73dfd6322deaee6d90910b8b512cbb92183929d6e4262f5959d6352bff08eaa211a2f292f3e8450deb41c74eee2f906918acebf8d7429900cad00c5209c82c2f5aea210a3da5d900ffdefeeacc1da3a3fc4300ae247de110a06e2f8c4d997d2139e155cafba526ae8f85c50cfd144055a285e745b6559f8e1902400f019926ac6b2f42f5282b1b9ddbd7ab4887d091561650f37d1d87500b1e6685054dbc7b297bdc4bbd52daa67),
+-      .data_length(4096),
+-      .expected('hc0b2)
+-    );
+-
+-    check(
+-      .data('h353aaa63f3784d51aaf19e5c1b21fb464109ae73d33355bdb158b3605bf4d97686124dbe0b961ea03eef268be29231ae8f6deeb03a956e75c50a6b98fba01c5673094853f23c678d5fed22f33fee1e40f38418d103a9afb6cfe12d63ffeba31fc63c471dc91b1959bd99f6bf973429a9b03e15bdbba57c2075e60faf7de10264ba6a9ce9d5436fde5075f14baa511cc4e9a3ccc22de174d4b478f5bf931f2ad06c9625c11f803cb8894740fb9875ee1378708b956e3bde768ad97cc51562bab3091a7fb55ccfb942646d41de50656955838e77b6ee9a18e85e6025d2d185f7eff3a345ddde50607d00ba68b09f402aff7999e279f0209152c43a624e1da88ece0fe47d56b08a1feba14f425146c81fd4cf16ef90f8300cbe37e45f0796d5cadd4d26a607605b10494adc93ecbfb003efe70ebfc0e6b52dc88f3cf7fd5c0b68e9923ba6fb30f7e4cf0762fb635c1a0e3c07cee7b4cf7014623c709cda2fb0618417d95678bc762abf928621d8df8a071f0f05c08d797c46ee055bf039888c86870535900413fb9dab8aacadcd14802b62d55e89d74687edf06e7cb5d818ca06e68e88ab62c1533fc03da7be1ba58530dd632943cb9b0765f9bf49d951487d5048a17e964396ad8996955ea64a47b6424264ac829d474433257ddbd652ce335445847d7721f54b05b55eed1465004a445bdac9749f824fb116bcc426b35b712015),
+-      .data_length(4096),
+-      .expected('h8dc2)
+-    );
+-
+-
+-    $display("All good");
+-    $finish();
+-  end
+-
+-endmodule
+diff --git a/src/tb_reg_reset.sv b/src/tb_reg_reset.sv
+deleted file mode 100644
+index f4aba2e..0000000
+--- a/src/tb_reg_reset.sv
++++ /dev/null
+@@ -1,189 +0,0 @@
+-// Copyright 2026 ETH Zurich and University of Bologna.
+-// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+-// SPDX-License-Identifier: SHL-0.51
+-
+-module tb_reg_reset #(
+-  parameter time ClkPeriod = 20ns
+-)();
+-  typedef struct packed {
+-    logic [31:0] addr;
+-    logic        write;
+-    logic [31:0] wdata;
+-    logic [3:0]  wstrb;
+-    logic        valid;
+-  } reg_req_t;
+-
+-  typedef struct packed {
+-    logic [31:0] rdata;
+-    logic        error;
+-    logic        ready;
+-  } reg_rsp_t;
+-
+-  localparam logic [31:0] BlockSizeCountOffset = 32'h004;
+-  localparam logic [31:0] ArgumentOffset       = 32'h008;
+-  localparam logic [31:0] TransferModeOffset   = 32'h00c;
+-  localparam logic [31:0] HostControlOffset    = 32'h028;
+-  localparam logic [31:0] ClockResetOffset     = 32'h02c;
+-  localparam logic [31:0] IntStatusEnOffset    = 32'h034;
+-  localparam logic [31:0] IntSignalEnOffset    = 32'h038;
+-
+-  logic clk;
+-  logic rst_n;
+-  reg_req_t reg_req;
+-  reg_rsp_t reg_rsp;
+-  logic sd_clk;
+-  logic sd_cmd_en;
+-  logic sd_cmd;
+-  logic [3:0] sd_dat;
+-  logic sd_dat_en;
+-  logic interrupt;
+-
+-  clk_rst_gen #(
+-    .ClkPeriod    (ClkPeriod),
+-    .RstClkCycles (2)
+-  ) i_clk_rst_sys (
+-    .clk_o  (clk),
+-    .rst_no (rst_n)
+-  );
+-
+-  sdhci_top #(
+-    .AddrWidth (32),
+-    .reg_req_t (reg_req_t),
+-    .reg_rsp_t (reg_rsp_t)
+-  ) i_dut (
+-    .clk_i     (clk),
+-    .rst_ni    (rst_n),
+-    .reg_req_i (reg_req),
+-    .reg_rsp_o (reg_rsp),
+-    .sd_clk_o  (sd_clk),
+-    .sd_cd_ni  (1'b0),
+-    .sd_cmd_en_o(sd_cmd_en),
+-    .sd_cmd_o  (sd_cmd),
+-    .sd_cmd_i  (1'b1),
+-    .sd_dat_i  (4'hf),
+-    .sd_dat_o  (sd_dat),
+-    .sd_dat_en_o(sd_dat_en),
+-    .interrupt_o(interrupt)
+-  );
+-
+-  task automatic reg_write(input logic [31:0] addr, input logic [3:0] be,
+-                           input logic [31:0] data);
+-    @(posedge clk);
+-    #1ns;
+-    reg_req.addr  = addr;
+-    reg_req.write = 1'b1;
+-    reg_req.wdata = data;
+-    reg_req.wstrb = be;
+-    reg_req.valid = 1'b1;
+-    #1ns;
+-    while (!reg_rsp.ready) begin
+-      @(posedge clk);
+-      #1ns;
+-    end
+-    @(posedge clk);
+-    #1ns;
+-    reg_req = '0;
+-  endtask
+-
+-  task automatic reg_read(input logic [31:0] addr, input logic [3:0] be,
+-                          output logic [31:0] data);
+-    @(posedge clk);
+-    #1ns;
+-    reg_req.addr  = addr;
+-    reg_req.write = 1'b0;
+-    reg_req.wdata = '0;
+-    reg_req.wstrb = be;
+-    reg_req.valid = 1'b1;
+-    #1ns;
+-    while (!reg_rsp.ready) begin
+-      @(posedge clk);
+-      #1ns;
+-    end
+-    data = reg_rsp.rdata;
+-    @(posedge clk);
+-    #1ns;
+-    reg_req = '0;
+-  endtask
+-
+-  task automatic expect_masked(input string name, input logic [31:0] actual,
+-                               input logic [31:0] expected, input logic [31:0] mask);
+-    if ((actual & mask) !== (expected & mask)) begin
+-      $fatal(1, "%s mismatch: got 0x%08x expected 0x%08x mask 0x%08x",
+-             name, actual, expected, mask);
+-    end
+-  endtask
+-
+-  task automatic write_nonzero_register_state();
+-    reg_write(BlockSizeCountOffset, 4'b1111, 32'h0003_0200);
+-    reg_write(ArgumentOffset,       4'b1111, 32'h89ab_cdef);
+-    reg_write(TransferModeOffset,   4'b0001, 32'h0000_0032);
+-    reg_write(HostControlOffset,    4'b0001, 32'h0000_0002);
+-    reg_write(ClockResetOffset,     4'b0011, 32'h0000_0105);
+-    reg_write(ClockResetOffset,     4'b0100, 32'h000a_0000);
+-    reg_write(IntStatusEnOffset,    4'b1111, 32'h001f_00f3);
+-    reg_write(IntSignalEnOffset,    4'b1111, 32'h001f_00f3);
+-    repeat (2) @(posedge clk);
+-  endtask
+-
+-  task automatic expect_nonzero_register_state(input string reset_context,
+-                                               input logic dat_counter_cleared = 1'b0);
+-    logic [31:0] data;
+-    reg_read(BlockSizeCountOffset, 4'b1111, data);
+-    expect_masked({reset_context, " block_size/count"}, data,
+-                  dat_counter_cleared ? 32'h0000_0200 : 32'h0003_0200, 32'hffff_0fff);
+-    reg_read(ArgumentOffset, 4'b1111, data);
+-    expect_masked({reset_context, " argument"}, data, 32'h89ab_cdef, 32'hffff_ffff);
+-    reg_read(TransferModeOffset, 4'b0001, data);
+-    expect_masked({reset_context, " transfer_mode"}, data, 32'h0000_0032, 32'h0000_003f);
+-    reg_read(HostControlOffset, 4'b0001, data);
+-    expect_masked({reset_context, " host_control"}, data, 32'h0000_0002, 32'h0000_0002);
+-    reg_read(ClockResetOffset, 4'b0111, data);
+-    expect_masked({reset_context, " clock/timeout"}, data, 32'h000a_0105, 32'h000f_ff05);
+-    reg_read(IntStatusEnOffset, 4'b1111, data);
+-    expect_masked({reset_context, " status_enable"}, data, 32'h001f_00f3, 32'hffff_ffff);
+-    reg_read(IntSignalEnOffset, 4'b1111, data);
+-    expect_masked({reset_context, " signal_enable"}, data, 32'h001f_00f3, 32'hffff_ffff);
+-  endtask
+-
+-  task automatic expect_cleared_register_state();
+-    logic [31:0] data;
+-    reg_read(BlockSizeCountOffset, 4'b1111, data);
+-    expect_masked("all reset block_size/count", data, 32'h0, 32'hffff_0fff);
+-    reg_read(ArgumentOffset, 4'b1111, data);
+-    expect_masked("all reset argument", data, 32'h0, 32'hffff_ffff);
+-    reg_read(TransferModeOffset, 4'b0001, data);
+-    expect_masked("all reset transfer_mode", data, 32'h0, 32'h0000_003f);
+-    reg_read(HostControlOffset, 4'b0001, data);
+-    expect_masked("all reset host_control", data, 32'h0, 32'h0000_0002);
+-    reg_read(ClockResetOffset, 4'b0111, data);
+-    expect_masked("all reset clock/timeout", data, 32'h0, 32'h000f_ff05);
+-    reg_read(IntStatusEnOffset, 4'b1111, data);
+-    expect_masked("all reset status_enable", data, 32'h0, 32'hffff_ffff);
+-    reg_read(IntSignalEnOffset, 4'b1111, data);
+-    expect_masked("all reset signal_enable", data, 32'h0, 32'hffff_ffff);
+-  endtask
+-
+-  task automatic software_reset(input logic [2:0] reset_bits);
+-    reg_write(ClockResetOffset, 4'b1000, {5'b0, reset_bits, 24'b0});
+-    repeat (6) @(posedge clk);
+-  endtask
+-
+-  initial begin
+-    reg_req = '0;
+-    wait(rst_n);
+-    repeat (4) @(posedge clk);
+-
+-    write_nonzero_register_state();
+-    software_reset(3'b010);
+-    expect_nonzero_register_state("cmd reset");
+-
+-    software_reset(3'b100);
+-    expect_nonzero_register_state("dat reset", 1'b1);
+-
+-    software_reset(3'b001);
+-    expect_cleared_register_state();
+-
+-    repeat (10) @(posedge clk);
+-    $finish();
+-  end
+-endmodule
+diff --git a/verilator/Makefile b/verilator/Makefile
+deleted file mode 100644
+index 0aed79d..0000000
+--- a/verilator/Makefile
++++ /dev/null
+@@ -1,45 +0,0 @@
+-# Copyright 2025 ETH Zurich and University of Bologna.
+-# Solderpad Hardware License, Version 0.51, see LICENSE for details.
+-# SPDX-License-Identifier: SHL-0.51
+-
+-# Authors:
+-# - Micha Wehrli <miwehrli@student.ethz.ch>
+-
+-VERILATOR ?= verilator
+-
+-RTL   ?= ../../..
+-SDHCI ?= ..
+-
+-all: dat acmd12
+-
+-obj_dir/V%: %.sv
+-	$(VERILATOR) --quiet --binary -j 0 --assert --trace --trace-structs --trace-fst --timing --autoflush -O3 -CFLAGS "-O1 -march=native" \
+-		-Wno-style -Wno-WIDTHEXPAND -Wno-fatal \
+-		--top $* \
+-		-f $(RTL)/../verilator/croc.f \
+-		$*
+-
+-dat: obj_dir/Vtb_dat
+-	set -e; \
+-	for BlockSize in $$(seq 1 128); do \
+-	for ClkEnPeriod in 1 2 3; do \
+-	for UseWideBus in 0 1 ; do \
+-		obj_dir/Vtb_dat +verilator+quiet +UseWideBus=$$UseWideBus +BlockSize=$$BlockSize +ClkEnPeriod=$$ClkEnPeriod ; \
+-	done \
+-	done \
+-	done
+-
+-acmd12: obj_dir/Vtb_acmd12
+-	set -e; \
+-	for Cycles in $$(seq -10 10); do \
+-	for ClkEnPeriod in 1 2 4; do \
+-	for Valid in 0 1 ; do \
+-	obj_dir/Vtb_acmd12 +verilator+quiet \
+-		+CyclesThatDriverCommandArrivesBeforeCMD12=$$Cycles \
+-		+IsFirstResponseValid=$$Valid \
+-		+ClkEnPeriod=$$ClkEnPeriod ; \
+-	done \
+-	done \
+-	done
+-
+-.PHONY: acmd12 dat all
+-- 
+2.43.0
+

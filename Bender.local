@@ -9,4 +9,5 @@ overrides:
   riscv-dbg: { path: "rtl/riscv-dbg" }
   idma: { path: "rtl/idma" }
   sdhci: { path: "rtl/sdhci" }
+  sdhci_sim: { path: "rtl/test/sdcard" }
   register_interface: { path: "rtl/register_interface" }

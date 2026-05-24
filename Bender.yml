@@ -20,6 +20,7 @@ dependencies:
   cve2:                 { path: "rtl/cve2" } # a vendor package (no Bender.yml), see below 
   # Specifically included for this project
   sdhci:                { git: "https://github.com/phsauter/sdhci.git",                     rev: 980f23f }
+  sdhci_sim:            { path: "rtl/test/sdcard" }
 
 
 sources:

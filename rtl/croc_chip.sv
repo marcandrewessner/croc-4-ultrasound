@@ -178,7 +178,16 @@ module croc_chip import croc_pkg::*; #() (
     .gpio_o         ( soc_gpio_o        ),
     .gpio_out_en_o  ( soc_gpio_out_en_o ),
 
-    .adc_signals_i  ( 'b0 )
+    // TODO assign pads
+    .adc_signals_i  ( 'b0 ),
+    .sd_clk_o       ( ),
+    .sd_cd_ni       ( ),
+    .sd_cmd_en_o    ( ),
+    .sd_cmd_o       ( ),
+    .sd_cmd_i       ( ),
+    .sd_dat_i       ( ),
+    .sd_dat_o       ( ),
+    .sd_dat_en_o    ( )
   );
 
 endmodule

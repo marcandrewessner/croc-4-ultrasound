@@ -29,7 +29,19 @@ module croc_domain import croc_pkg::*; #(
 
   output logic [GpioCount-1:0] gpio_in_sync_o, // synchronized GPIO inputs
 
+  /// Interface with the world, specific to this Project (Ultrasound -> SDCARD)
+  // ADC
   input logic [16:0] adc_signals_i,
+  // SDCARD
+  output logic       sd_clk_o,
+  input  logic       sd_cd_ni,
+  output logic       sd_cmd_en_o,
+  output logic       sd_cmd_o,
+  input  logic       sd_cmd_i,
+  input  logic [3:0] sd_dat_i,
+  output logic [3:0] sd_dat_o,
+  output logic       sd_dat_en_o,
+
 
   /// User OBI interface
   /// User as subordinate (from core to user module)
@@ -138,6 +150,10 @@ module croc_domain import croc_pkg::*; #(
   sbr_obi_req_t [NumSramBanks-1:0] xbar_mem_bank_obi_req;
   sbr_obi_rsp_t [NumSramBanks-1:0] xbar_mem_bank_obi_rsp;
 
+  // sdcard bus
+  sbr_obi_req_t xbar_sdhc_obi_req;
+  sbr_obi_rsp_t xbar_sdhc_obi_rsp;
+
   // periph bus
   sbr_obi_req_t xbar_periph_obi_req;
   sbr_obi_rsp_t xbar_periph_obi_rsp;
@@ -159,6 +175,9 @@ module croc_domain import croc_pkg::*; #(
 
   assign user_sbr_obi_req_o          = all_sbr_obi_req[XbarUser];
   assign all_sbr_obi_rsp[XbarUser]   = user_sbr_obi_rsp_i;
+
+  assign xbar_sdhc_obi_req           = all_sbr_obi_req[XbarSDHC];
+  assign all_sbr_obi_rsp[XbarSDHC]   = xbar_sdhc_obi_rsp;
 
 
   // -----------------
@@ -545,6 +564,29 @@ module croc_domain import croc_pkg::*; #(
     .sbr_obi_rsp_o          ( adc_obi_cfg_rsp ),
     .interrupt_frame_full_o ( adc_frame_full_irq ),
     .adc_input_signals      ( adc_signals_i )
+  );
+
+  // ----------------
+  // SDHC
+  // ----------------
+  sdhci_top_obi #(
+    .ObiCfg      ( SbrObiCfg     ),
+    .obi_req_t   ( sbr_obi_req_t ),
+    .obi_rsp_t   ( sbr_obi_rsp_t )
+  ) i_sdhci_top_obi (
+    .clk_i,
+    .rst_ni,
+    .obi_req_i ( xbar_sdhc_obi_req ),
+    .obi_rsp_o ( xbar_sdhc_obi_rsp ),
+    .sd_clk_o    ( sd_clk_o ),
+    .sd_cd_ni    ( sd_cd_ni ),
+    .sd_cmd_en_o ( sd_cmd_en_o ),
+    .sd_cmd_o    ( sd_cmd_o ),
+    .sd_cmd_i    ( sd_cmd_i ),
+    .sd_dat_i    ( sd_dat_i ),
+    .sd_dat_o    ( sd_dat_o ),
+    .sd_dat_en_o ( sd_dat_en_o ),
+    .interrupt_o ( /* TODO */ )  
   );
 
 

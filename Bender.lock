@@ -75,6 +75,13 @@ packages:
     - common_verification
     - obi
     - register_interface
+  sdhci_sim:
+    revision: null
+    version: null
+    source:
+      Path: rtl/test/sdcard
+    dependencies:
+    - sdhci
   tech_cells_generic:
     revision: null
     version: null
