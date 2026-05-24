@@ -198,6 +198,13 @@ vendor_package:
       - { from: 'hw/',        to: '',           patch_dir: 'hw/' }
       - { from: 'Bender.yml', to: 'Bender.yml', patch_dir: '' }
 
+  - name: sdhci_sim
+    target_dir: rtl/test/sdcard
+    upstream: { git: "https://github.com/phsauter/sdhci.git", rev: "980f23f5929d26cf9333989739a19473ae3010d7" }
+    patch_dir: "rtl/.patches/sdhci_sim"
+    mapping:
+      - { from: 'target/sim/', to: '', patch_dir: 'target/sim/' }
+
 
   ########################
   # register interface   #

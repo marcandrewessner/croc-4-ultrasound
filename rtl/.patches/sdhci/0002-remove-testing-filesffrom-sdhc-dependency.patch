@@ -1,0 +1,44 @@
+From cf0b4f887fd65e98873ac66cf452dda24c88add8 Mon Sep 17 00:00:00 2001
+From: Marc-Andre <mwessner@student.ethz.ch>
+Date: Sun, 24 May 2026 14:00:35 +0200
+Subject: [PATCH] remove testing filesffrom sdhc dependency
+
+---
+ Bender.yml | 24 ------------------------
+ 1 file changed, 24 deletions(-)
+
+diff --git a/Bender.yml b/Bender.yml
+index 7f057cd..1c41b98 100644
+--- a/Bender.yml
++++ b/Bender.yml
+@@ -58,27 +58,3 @@ sources:
+   # Level 6
+   - sdhci_obi_to_reg.sv # register_interface to OBI bridge
+   - sdhci_top_obi.sv # sdhci_top, external obi_pkg
+-
+-  - target: any(simulation, test)
+-    files:
+-      # Level 1
+-      - target/sim/src/tb_dat.sv # sd_clk_generator, dat_write, dat_read
+-      - target/sim/src/tb_dat_buffer_sizes.sv # dat_buffer
+-      - target/sim/src/tb_reg_reset.sv # sdhci_top register reset behavior
+-      - target/sim/src/tb_driver_crc.sv
+-      - target/sim/model/sd_crc_7.v
+-      - target/sim/model/sd_crc_16.v
+-      - target/sim/src/sdhci_obi_driver.sv
+-      - target/sim/src/sdhci_sd_driver.sv
+-      # Level 2
+-      - target/sim/model/sdModel.v # sd_crc_7, sd_crc_16
+-      - target/sim/src/sdhci_vip.sv # sdhci_obi_driver
+-      # Level 3
+-      - target/sim/model/sd_card.sv # sdModel
+-      - target/sim/src/sdhci_fixture.sv # sdhci_vip
+-      # Level 4
+-      - target/sim/src/tb_acmd12_errorhandling.sv # sdhci_fixture
+-      - target/sim/src/tb_acmd12_interrupts.sv # sdhci_fixture
+-      - target/sim/src/tb_cmd_timeout.sv # sdhci_fixture
+-      - target/sim/src/tb_dat_timeout.sv # sdhci_fixture
+-      - target/sim/src/tb_block_read.sv # sdhci_fixture
+-- 
+2.43.0
+
