@@ -23,6 +23,11 @@ void clint_set_mtimecmp(uint64_t value) {
     *reg32(CLINT_BASE_ADDR, CLINT_MTIMECMP_LOW0_REG_OFFSET)  = value_low;
 }
 
+void clint_spin_ticks(uint32_t ticks) {
+    uint64_t end = clint_get_mtime() + ticks;
+    while (clint_get_mtime() < end);
+}
+
 void clint_sleep_ticks(uint32_t ticks) {
     uint64_t value = clint_get_mtime() + ticks;
     clint_set_mtimecmp(value);

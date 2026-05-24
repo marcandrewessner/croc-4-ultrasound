@@ -72,6 +72,7 @@ module croc_domain import croc_pkg::*; #(
   logic gpio_irq;
   logic idma_irq;
   logic adc_frame_full_irq;
+  logic sdhci_irq;
   logic [15:0] interrupts;
   always_comb begin
     interrupts    = '0;
@@ -80,7 +81,8 @@ module croc_domain import croc_pkg::*; #(
     interrupts[2] = gpio_irq;
     interrupts[3] = idma_irq;
     interrupts[4] = adc_frame_full_irq;
-    interrupts[5+:NumExternalIrqs] = interrupts_i;
+    interrupts[5] = sdhci_irq;
+    interrupts[6+:NumExternalIrqs] = interrupts_i;
   end
 
   // ----------------------------
@@ -586,7 +588,7 @@ module croc_domain import croc_pkg::*; #(
     .sd_dat_i    ( sd_dat_i ),
     .sd_dat_o    ( sd_dat_o ),
     .sd_dat_en_o ( sd_dat_en_o ),
-    .interrupt_o ( /* TODO */ )  
+    .interrupt_o ( sdhci_irq )
   );
 
 

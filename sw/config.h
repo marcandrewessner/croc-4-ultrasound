@@ -36,3 +36,4 @@
 #define IRQ_UART            17
 #define IRQ_GPIO            18
 #define IRQ_IDMA            19
+#define IRQ_SDHCI           21

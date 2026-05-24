@@ -19,6 +19,10 @@
 #ifndef _SDHCREG_H_
 #define _SDHCREG_H_
 
+#ifndef __packed
+#define __packed __attribute__((__packed__))
+#endif
+
 /* PCI base address registers */
 #define SDHC_PCI_BAR_START		PCI_MAPREG_START
 #define SDHC_PCI_BAR_END		PCI_MAPREG_END

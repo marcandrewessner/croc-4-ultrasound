@@ -3,3 +3,4 @@ obj_dir
 *.fst
 *.fst.hier
 *.log
+sdcard/

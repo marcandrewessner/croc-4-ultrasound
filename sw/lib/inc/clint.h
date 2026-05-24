@@ -16,5 +16,6 @@
 
 uint64_t clint_get_mtime();
 void clint_set_mtimecmp(uint64_t value);
+void clint_spin_ticks(uint32_t ticks);
 void clint_sleep_ticks(uint32_t ticks);
 void clint_sleep_ms(uint32_t ms);

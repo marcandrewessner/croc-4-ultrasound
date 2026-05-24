@@ -247,7 +247,7 @@ sdmmc_scan(struct sdmmc_softc *sc)
 void
 sdmmc_delay(u_int usecs)
 {
-	clint_spin_ticks(usecs * 32);
+	clint_spin_ticks((usecs * 33 + 999) / 1000);
 }
 
 int
