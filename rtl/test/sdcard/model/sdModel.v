@@ -945,7 +945,7 @@ module sdModel (
     integer fd;
     integer j;
     fd = $fopen("sdcard/flash_dump.hex", "w");
-    for (j = 0; j < 128; j = j + 1)
+    for (j = 0; j < 512 / 4 * 8; j = j + 1)
       $fwrite(fd, "%06x: %02x%02x%02x%02x\n", j * 4,
               FLASHmem[j*4+3], FLASHmem[j*4+2], FLASHmem[j*4+1], FLASHmem[j*4]);
     $fclose(fd);

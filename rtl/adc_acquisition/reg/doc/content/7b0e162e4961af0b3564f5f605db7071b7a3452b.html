@@ -10,7 +10,7 @@
     <dt>Base Offset:</dt><dd class="address">0x0</dd>
     <dt>Size:</dt><dd class="address">0x4</dd>
     
-    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L22" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
+    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L25" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
     
 </dl>
 <h2>Description</h2>
@@ -30,7 +30,7 @@
         <th></th>
     </tr>
     <tr class="reserved-field">
-    <td>[31:3]</td>
+    <td>[31:4]</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -38,6 +38,26 @@
     <td>-</td>
     <td></td>
 </tr>
+    <tr id="CLEAR_STATUS">
+        <td>[3]</td>
+        <td><a href="#CLEAR_STATUS.desc">CLEAR_STATUS</a></td>
+        <td>
+            <span title='Write-only'>w</span></td>
+        <td>0x0
+        </td>
+        <td>
+            <input id="_FieldValueTesterCLEAR_STATUS" class="field-value-tester"
+                type="text" autocomplete="off"
+                data-name="CLEAR_STATUS" oninput="onDecodedFieldInput(this)"/>
+        </td>
+        <td>clear_status</td>
+        <td>
+            <button type="button" id="_RadixButtonCLEAR_STATUS" class="radix-button"
+                title="Switch radix" aria-label="Switch radix"
+                data-name="CLEAR_STATUS" onclick="onRadixSwitch(this)">H</button>
+            <a class="headerlink" href="#CLEAR_STATUS" title="Permalink to this row"></a>
+        </td>
+    </tr>
     <tr id="CLEAR_F1_FULL">
         <td>[2]</td>
         <td><a href="#CLEAR_F1_FULL.desc">CLEAR_F1_FULL</a></td>
@@ -107,6 +127,13 @@
     </label>
 </p>
 <hr/><h2>Field Descriptions</h2>
+
+<h3 id="CLEAR_STATUS.desc">CLEAR_STATUS - clear_status
+    <a class="headerlink" href="#CLEAR_STATUS.desc" title="Permalink to this headline"></a>
+</h3>
+<div id="_Content.CLEAR_STATUS.desc">
+<p>Clears ADC_OVERFLOW, SDCARD_DONE, SDCARD_OVERFLOW status flags</p>
+</div>
 
 <h3 id="CLEAR_F1_FULL.desc">CLEAR_F1_FULL - Clear Status Fx Full
     <a class="headerlink" href="#CLEAR_F1_FULL.desc" title="Permalink to this headline"></a>

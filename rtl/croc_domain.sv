@@ -115,9 +115,13 @@ module croc_domain import croc_pkg::*; #(
   mgr_obi_req_t idma_obi_write_req;
   mgr_obi_rsp_t idma_obi_write_rsp;
 
-  // ADC Acquisition DMA bus
+  // ADC Acquisition DMA buses
   mgr_obi_req_t adc_data_obi_req;
   mgr_obi_rsp_t adc_data_obi_rsp;
+  mgr_obi_req_t adc_copy_read_obi_req;
+  mgr_obi_rsp_t adc_copy_read_obi_rsp;
+  mgr_obi_req_t adc_copy_write_obi_req;
+  mgr_obi_rsp_t adc_copy_write_obi_rsp;
 
   // xbar manager buses
   mgr_obi_req_t [NumXbarManagers-1:0] xbar_mgr_obi_req;
@@ -137,7 +141,13 @@ module croc_domain import croc_pkg::*; #(
   assign core_instr_obi_rsp  = xbar_mgr_obi_rsp[3];
 
   assign xbar_mgr_obi_req[4] = adc_data_obi_req;
-  assign adc_data_obi_rsp    = xbar_mgr_obi_rsp[4];
+  assign adc_data_obi_rsp         = xbar_mgr_obi_rsp[4];
+
+  assign xbar_mgr_obi_req[5] = adc_copy_read_obi_req;
+  assign adc_copy_read_obi_rsp    = xbar_mgr_obi_rsp[5];
+
+  assign xbar_mgr_obi_req[6] = adc_copy_write_obi_req;
+  assign adc_copy_write_obi_rsp   = xbar_mgr_obi_rsp[6];
 
   // ----------------------------------
   // Subordinate buses out of crossbar
@@ -560,12 +570,16 @@ module croc_domain import croc_pkg::*; #(
   ) i_adc_acquisition_top (
     .clk_i,
     .rst_ni,
-    .mgr_obi_req_o          ( adc_data_obi_req ),
-    .mgr_obi_rsp_i          ( adc_data_obi_rsp ),
-    .sbr_obi_req_i          ( adc_obi_cfg_req ),
-    .sbr_obi_rsp_o          ( adc_obi_cfg_rsp ),
-    .interrupt_frame_full_o ( adc_frame_full_irq ),
-    .adc_input_signals      ( adc_signals_i )
+    .adc_data_write_req_o   ( adc_data_obi_req        ),
+    .adc_data_write_rsp_i   ( adc_data_obi_rsp        ),
+    .copy_read_req_o        ( adc_copy_read_obi_req   ),
+    .copy_read_rsp_i        ( adc_copy_read_obi_rsp   ),
+    .copy_write_req_o       ( adc_copy_write_obi_req  ),
+    .copy_write_rsp_i       ( adc_copy_write_obi_rsp  ),
+    .sbr_obi_req_i          ( adc_obi_cfg_req         ),
+    .sbr_obi_rsp_o          ( adc_obi_cfg_rsp         ),
+    .interrupt_frame_full_o ( adc_frame_full_irq      ),
+    .adc_input_signals      ( adc_signals_i           )
   );
 
   // ----------------

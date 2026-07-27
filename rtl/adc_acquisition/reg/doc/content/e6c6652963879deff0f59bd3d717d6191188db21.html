@@ -10,7 +10,7 @@
     <dt>Base Offset:</dt><dd class="address">0x4</dd>
     <dt>Size:</dt><dd class="address">0x4</dd>
     
-    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L47" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
+    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L58" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
     
 </dl>
 <h2>Description</h2>
@@ -30,7 +30,7 @@
         <th></th>
     </tr>
     <tr class="reserved-field">
-    <td>[31:2]</td>
+    <td>[31:5]</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -38,6 +38,66 @@
     <td>-</td>
     <td></td>
 </tr>
+    <tr id="SDCARD_OVERFLOW">
+        <td>[4]</td>
+        <td><a href="#SDCARD_OVERFLOW.desc">SDCARD_OVERFLOW</a></td>
+        <td>
+            <span title='Read-only'>r</span></td>
+        <td>0x0
+        </td>
+        <td>
+            <input id="_FieldValueTesterSDCARD_OVERFLOW" class="field-value-tester"
+                type="text" autocomplete="off"
+                data-name="SDCARD_OVERFLOW" oninput="onDecodedFieldInput(this)"/>
+        </td>
+        <td>sdcard_overflow</td>
+        <td>
+            <button type="button" id="_RadixButtonSDCARD_OVERFLOW" class="radix-button"
+                title="Switch radix" aria-label="Switch radix"
+                data-name="SDCARD_OVERFLOW" onclick="onRadixSwitch(this)">H</button>
+            <a class="headerlink" href="#SDCARD_OVERFLOW" title="Permalink to this row"></a>
+        </td>
+    </tr>
+    <tr id="SDCARD_DONE">
+        <td>[3]</td>
+        <td><a href="#SDCARD_DONE.desc">SDCARD_DONE</a></td>
+        <td>
+            <span title='Read-only'>r</span></td>
+        <td>0x0
+        </td>
+        <td>
+            <input id="_FieldValueTesterSDCARD_DONE" class="field-value-tester"
+                type="text" autocomplete="off"
+                data-name="SDCARD_DONE" oninput="onDecodedFieldInput(this)"/>
+        </td>
+        <td>sdcard_done</td>
+        <td>
+            <button type="button" id="_RadixButtonSDCARD_DONE" class="radix-button"
+                title="Switch radix" aria-label="Switch radix"
+                data-name="SDCARD_DONE" onclick="onRadixSwitch(this)">H</button>
+            <a class="headerlink" href="#SDCARD_DONE" title="Permalink to this row"></a>
+        </td>
+    </tr>
+    <tr id="ADC_OVERFLOW">
+        <td>[2]</td>
+        <td><a href="#ADC_OVERFLOW.desc">ADC_OVERFLOW</a></td>
+        <td>
+            <span title='Read-only'>r</span></td>
+        <td>0x0
+        </td>
+        <td>
+            <input id="_FieldValueTesterADC_OVERFLOW" class="field-value-tester"
+                type="text" autocomplete="off"
+                data-name="ADC_OVERFLOW" oninput="onDecodedFieldInput(this)"/>
+        </td>
+        <td>adc_overflow</td>
+        <td>
+            <button type="button" id="_RadixButtonADC_OVERFLOW" class="radix-button"
+                title="Switch radix" aria-label="Switch radix"
+                data-name="ADC_OVERFLOW" onclick="onRadixSwitch(this)">H</button>
+            <a class="headerlink" href="#ADC_OVERFLOW" title="Permalink to this row"></a>
+        </td>
+    </tr>
     <tr id="F1_FULL">
         <td>[1]</td>
         <td><a href="#F1_FULL.desc">F1_FULL</a></td>
@@ -87,6 +147,27 @@
     </label>
 </p>
 <hr/><h2>Field Descriptions</h2>
+
+<h3 id="SDCARD_OVERFLOW.desc">SDCARD_OVERFLOW - sdcard_overflow
+    <a class="headerlink" href="#SDCARD_OVERFLOW.desc" title="Permalink to this headline"></a>
+</h3>
+<div id="_Content.SDCARD_OVERFLOW.desc">
+<p>A frame became full while BUFFER_WRITE_READY was not set (SDHCI not ready). ADC stopped. Clear with CLEAR_STATUS.</p>
+</div>
+
+<h3 id="SDCARD_DONE.desc">SDCARD_DONE - sdcard_done
+    <a class="headerlink" href="#SDCARD_DONE.desc" title="Permalink to this headline"></a>
+</h3>
+<div id="_Content.SDCARD_DONE.desc">
+<p>HW copy engine finished transferring a frame into the SDHCI buffer. Clear with CLEAR_STATUS.</p>
+</div>
+
+<h3 id="ADC_OVERFLOW.desc">ADC_OVERFLOW - adc_overflow
+    <a class="headerlink" href="#ADC_OVERFLOW.desc" title="Permalink to this headline"></a>
+</h3>
+<div id="_Content.ADC_OVERFLOW.desc">
+<p>ADC CDC FIFO was full when a new sample arrived; at least one sample was dropped. Clear with CLEAR_STATUS.</p>
+</div>
 
 <h3 id="F1_FULL.desc">F1_FULL - Block Fx Full
     <a class="headerlink" href="#F1_FULL.desc" title="Permalink to this headline"></a>

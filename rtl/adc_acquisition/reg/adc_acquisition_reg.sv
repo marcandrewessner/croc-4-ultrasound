@@ -9,7 +9,7 @@ module adc_acquisition_reg #(
 
         input wire s_obi_req,
         output logic s_obi_gnt,
-        input wire [4:0] s_obi_addr,
+        input wire [5:0] s_obi_addr,
         input wire s_obi_we,
         input wire [3:0] s_obi_be,
         input wire [31:0] s_obi_wdata,
@@ -29,7 +29,7 @@ module adc_acquisition_reg #(
     //--------------------------------------------------------------------------
     logic cpuif_req;
     logic cpuif_req_is_wr;
-    logic [4:0] cpuif_addr;
+    logic [5:0] cpuif_addr;
     logic [31:0] cpuif_wr_data;
     logic [31:0] cpuif_wr_biten;
     logic cpuif_req_stall_wr;
@@ -76,7 +76,7 @@ module adc_acquisition_reg #(
                     is_active <= 1'b1;
                     cpuif_req <= 1'b1;
                     cpuif_req_is_wr <= s_obi_we;
-                    cpuif_addr <= {s_obi_addr[4:2], 2'b0};
+                    cpuif_addr <= {s_obi_addr[5:2], 2'b0};
                     cpuif_wr_data <= s_obi_wdata;
                     rid_q <= s_obi_aid;
                     for (int i = 0; i < 4; i++) begin
@@ -131,10 +131,13 @@ module adc_acquisition_reg #(
         logic F0_END_ADDR;
         logic F1_START_ADDR;
         logic F1_END_ADDR;
+        logic SDCARD_BLOCK_ADDR;
+        logic SDCARD_FRAME_COUNT;
+        logic SDCARD_ADDR_MODE;
     } decoded_reg_strb_t;
     decoded_reg_strb_t decoded_reg_strb;
     logic decoded_err;
-    logic [4:0] decoded_addr;
+    logic [5:0] decoded_addr;
     logic decoded_req;
     logic decoded_req_is_wr;
     logic [31:0] decoded_wr_data;
@@ -145,14 +148,17 @@ module adc_acquisition_reg #(
         automatic logic is_valid_rw;
         is_valid_addr = '1; // No valid address check
         is_valid_rw = '1; // No valid RW check
-        decoded_reg_strb.CNTRL = cpuif_req_masked & (cpuif_addr == 5'h0) & cpuif_req_is_wr;
-        decoded_reg_strb.STATUS = cpuif_req_masked & (cpuif_addr == 5'h4) & !cpuif_req_is_wr;
-        decoded_reg_strb.CONF = cpuif_req_masked & (cpuif_addr == 5'h8);
-        decoded_reg_strb.WRITE_HEAD = cpuif_req_masked & (cpuif_addr == 5'hc) & !cpuif_req_is_wr;
-        decoded_reg_strb.F0_START_ADDR = cpuif_req_masked & (cpuif_addr == 5'h10) & cpuif_req_is_wr;
-        decoded_reg_strb.F0_END_ADDR = cpuif_req_masked & (cpuif_addr == 5'h14) & cpuif_req_is_wr;
-        decoded_reg_strb.F1_START_ADDR = cpuif_req_masked & (cpuif_addr == 5'h18) & cpuif_req_is_wr;
-        decoded_reg_strb.F1_END_ADDR = cpuif_req_masked & (cpuif_addr == 5'h1c) & cpuif_req_is_wr;
+        decoded_reg_strb.CNTRL = cpuif_req_masked & (cpuif_addr == 6'h0) & cpuif_req_is_wr;
+        decoded_reg_strb.STATUS = cpuif_req_masked & (cpuif_addr == 6'h4) & !cpuif_req_is_wr;
+        decoded_reg_strb.CONF = cpuif_req_masked & (cpuif_addr == 6'h8);
+        decoded_reg_strb.WRITE_HEAD = cpuif_req_masked & (cpuif_addr == 6'hc) & !cpuif_req_is_wr;
+        decoded_reg_strb.F0_START_ADDR = cpuif_req_masked & (cpuif_addr == 6'h10) & cpuif_req_is_wr;
+        decoded_reg_strb.F0_END_ADDR = cpuif_req_masked & (cpuif_addr == 6'h14) & cpuif_req_is_wr;
+        decoded_reg_strb.F1_START_ADDR = cpuif_req_masked & (cpuif_addr == 6'h18) & cpuif_req_is_wr;
+        decoded_reg_strb.F1_END_ADDR = cpuif_req_masked & (cpuif_addr == 6'h1c) & cpuif_req_is_wr;
+        decoded_reg_strb.SDCARD_BLOCK_ADDR = cpuif_req_masked & (cpuif_addr == 6'h20);
+        decoded_reg_strb.SDCARD_FRAME_COUNT = cpuif_req_masked & (cpuif_addr == 6'h24) & cpuif_req_is_wr;
+        decoded_reg_strb.SDCARD_ADDR_MODE = cpuif_req_masked & (cpuif_addr == 6'h28);
         decoded_err = '0;
     end
 
@@ -180,6 +186,10 @@ module adc_acquisition_reg #(
                 logic next;
                 logic load_next;
             } CLEAR_F1_FULL;
+            struct {
+                logic next;
+                logic load_next;
+            } CLEAR_STATUS;
         } CNTRL;
         struct {
             struct {
@@ -190,6 +200,18 @@ module adc_acquisition_reg #(
                 logic next;
                 logic load_next;
             } F1_FULL;
+            struct {
+                logic next;
+                logic load_next;
+            } ADC_OVERFLOW;
+            struct {
+                logic next;
+                logic load_next;
+            } SDCARD_DONE;
+            struct {
+                logic next;
+                logic load_next;
+            } SDCARD_OVERFLOW;
         } STATUS;
         struct {
             struct {
@@ -227,6 +249,24 @@ module adc_acquisition_reg #(
                 logic load_next;
             } WORD_ADDRESS;
         } F1_END_ADDR;
+        struct {
+            struct {
+                logic [31:0] next;
+                logic load_next;
+            } BLOCK_ADDR;
+        } SDCARD_BLOCK_ADDR;
+        struct {
+            struct {
+                logic [31:0] next;
+                logic load_next;
+            } FRAME_COUNT;
+        } SDCARD_FRAME_COUNT;
+        struct {
+            struct {
+                logic next;
+                logic load_next;
+            } BLOCK_UNITS;
+        } SDCARD_ADDR_MODE;
     } field_combo_t;
     field_combo_t field_combo;
 
@@ -241,6 +281,9 @@ module adc_acquisition_reg #(
             struct {
                 logic value;
             } CLEAR_F1_FULL;
+            struct {
+                logic value;
+            } CLEAR_STATUS;
         } CNTRL;
         struct {
             struct {
@@ -249,6 +292,15 @@ module adc_acquisition_reg #(
             struct {
                 logic value;
             } F1_FULL;
+            struct {
+                logic value;
+            } ADC_OVERFLOW;
+            struct {
+                logic value;
+            } SDCARD_DONE;
+            struct {
+                logic value;
+            } SDCARD_OVERFLOW;
         } STATUS;
         struct {
             struct {
@@ -280,6 +332,21 @@ module adc_acquisition_reg #(
                 logic [29:0] value;
             } WORD_ADDRESS;
         } F1_END_ADDR;
+        struct {
+            struct {
+                logic [31:0] value;
+            } BLOCK_ADDR;
+        } SDCARD_BLOCK_ADDR;
+        struct {
+            struct {
+                logic [31:0] value;
+            } FRAME_COUNT;
+        } SDCARD_FRAME_COUNT;
+        struct {
+            struct {
+                logic value;
+            } BLOCK_UNITS;
+        } SDCARD_ADDR_MODE;
     } field_storage_t;
     field_storage_t field_storage;
 
@@ -361,6 +428,32 @@ module adc_acquisition_reg #(
         end
     end
     assign hwif_out.CNTRL.CLEAR_F1_FULL.value = field_storage.CNTRL.CLEAR_F1_FULL.value;
+    // Field: adc_acquisition_reg.CNTRL.CLEAR_STATUS
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.CNTRL.CLEAR_STATUS.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.CNTRL && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.CNTRL.CLEAR_STATUS.value & ~decoded_wr_biten[3:3]) | (decoded_wr_data[3:3] & decoded_wr_biten[3:3]);
+            load_next_c = '1;
+        end else begin // singlepulse clears back to 0
+            next_c = '0;
+            load_next_c = '1;
+        end
+        field_combo.CNTRL.CLEAR_STATUS.next = next_c;
+        field_combo.CNTRL.CLEAR_STATUS.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.CNTRL.CLEAR_STATUS.value <= 1'h0;
+        end else begin
+            if(field_combo.CNTRL.CLEAR_STATUS.load_next) begin
+                field_storage.CNTRL.CLEAR_STATUS.value <= field_combo.CNTRL.CLEAR_STATUS.next;
+            end
+        end
+    end
+    assign hwif_out.CNTRL.CLEAR_STATUS.value = field_storage.CNTRL.CLEAR_STATUS.value;
     // Field: adc_acquisition_reg.STATUS.F0_FULL
     always_comb begin
         automatic logic [0:0] next_c;
@@ -407,6 +500,75 @@ module adc_acquisition_reg #(
         end
     end
     assign hwif_out.STATUS.F1_FULL.value = field_storage.STATUS.F1_FULL.value;
+    // Field: adc_acquisition_reg.STATUS.ADC_OVERFLOW
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.STATUS.ADC_OVERFLOW.value;
+        load_next_c = '0;
+        
+        // HW Write
+        next_c = hwif_in.STATUS.ADC_OVERFLOW.next;
+        load_next_c = '1;
+        field_combo.STATUS.ADC_OVERFLOW.next = next_c;
+        field_combo.STATUS.ADC_OVERFLOW.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.STATUS.ADC_OVERFLOW.value <= 1'h0;
+        end else begin
+            if(field_combo.STATUS.ADC_OVERFLOW.load_next) begin
+                field_storage.STATUS.ADC_OVERFLOW.value <= field_combo.STATUS.ADC_OVERFLOW.next;
+            end
+        end
+    end
+    assign hwif_out.STATUS.ADC_OVERFLOW.value = field_storage.STATUS.ADC_OVERFLOW.value;
+    // Field: adc_acquisition_reg.STATUS.SDCARD_DONE
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.STATUS.SDCARD_DONE.value;
+        load_next_c = '0;
+        
+        // HW Write
+        next_c = hwif_in.STATUS.SDCARD_DONE.next;
+        load_next_c = '1;
+        field_combo.STATUS.SDCARD_DONE.next = next_c;
+        field_combo.STATUS.SDCARD_DONE.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.STATUS.SDCARD_DONE.value <= 1'h0;
+        end else begin
+            if(field_combo.STATUS.SDCARD_DONE.load_next) begin
+                field_storage.STATUS.SDCARD_DONE.value <= field_combo.STATUS.SDCARD_DONE.next;
+            end
+        end
+    end
+    assign hwif_out.STATUS.SDCARD_DONE.value = field_storage.STATUS.SDCARD_DONE.value;
+    // Field: adc_acquisition_reg.STATUS.SDCARD_OVERFLOW
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.STATUS.SDCARD_OVERFLOW.value;
+        load_next_c = '0;
+        
+        // HW Write
+        next_c = hwif_in.STATUS.SDCARD_OVERFLOW.next;
+        load_next_c = '1;
+        field_combo.STATUS.SDCARD_OVERFLOW.next = next_c;
+        field_combo.STATUS.SDCARD_OVERFLOW.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.STATUS.SDCARD_OVERFLOW.value <= 1'h0;
+        end else begin
+            if(field_combo.STATUS.SDCARD_OVERFLOW.load_next) begin
+                field_storage.STATUS.SDCARD_OVERFLOW.value <= field_combo.STATUS.SDCARD_OVERFLOW.next;
+            end
+        end
+    end
+    assign hwif_out.STATUS.SDCARD_OVERFLOW.value = field_storage.STATUS.SDCARD_OVERFLOW.value;
     // Field: adc_acquisition_reg.CONF.MODE
     always_comb begin
         automatic logic [7:0] next_c;
@@ -548,6 +710,78 @@ module adc_acquisition_reg #(
         end
     end
     assign hwif_out.F1_END_ADDR.WORD_ADDRESS.value = field_storage.F1_END_ADDR.WORD_ADDRESS.value;
+    // Field: adc_acquisition_reg.SDCARD_BLOCK_ADDR.BLOCK_ADDR
+    always_comb begin
+        automatic logic [31:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.SDCARD_BLOCK_ADDR.BLOCK_ADDR.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.SDCARD_BLOCK_ADDR && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.SDCARD_BLOCK_ADDR.BLOCK_ADDR.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            load_next_c = '1;
+        end else begin // HW Write
+            next_c = hwif_in.SDCARD_BLOCK_ADDR.BLOCK_ADDR.next;
+            load_next_c = '1;
+        end
+        field_combo.SDCARD_BLOCK_ADDR.BLOCK_ADDR.next = next_c;
+        field_combo.SDCARD_BLOCK_ADDR.BLOCK_ADDR.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.SDCARD_BLOCK_ADDR.BLOCK_ADDR.value <= 32'h0;
+        end else begin
+            if(field_combo.SDCARD_BLOCK_ADDR.BLOCK_ADDR.load_next) begin
+                field_storage.SDCARD_BLOCK_ADDR.BLOCK_ADDR.value <= field_combo.SDCARD_BLOCK_ADDR.BLOCK_ADDR.next;
+            end
+        end
+    end
+    assign hwif_out.SDCARD_BLOCK_ADDR.BLOCK_ADDR.value = field_storage.SDCARD_BLOCK_ADDR.BLOCK_ADDR.value;
+    // Field: adc_acquisition_reg.SDCARD_FRAME_COUNT.FRAME_COUNT
+    always_comb begin
+        automatic logic [31:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.SDCARD_FRAME_COUNT.FRAME_COUNT.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.SDCARD_FRAME_COUNT && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.SDCARD_FRAME_COUNT.FRAME_COUNT.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            load_next_c = '1;
+        end
+        field_combo.SDCARD_FRAME_COUNT.FRAME_COUNT.next = next_c;
+        field_combo.SDCARD_FRAME_COUNT.FRAME_COUNT.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.SDCARD_FRAME_COUNT.FRAME_COUNT.value <= 32'h0;
+        end else begin
+            if(field_combo.SDCARD_FRAME_COUNT.FRAME_COUNT.load_next) begin
+                field_storage.SDCARD_FRAME_COUNT.FRAME_COUNT.value <= field_combo.SDCARD_FRAME_COUNT.FRAME_COUNT.next;
+            end
+        end
+    end
+    assign hwif_out.SDCARD_FRAME_COUNT.FRAME_COUNT.value = field_storage.SDCARD_FRAME_COUNT.FRAME_COUNT.value;
+    // Field: adc_acquisition_reg.SDCARD_ADDR_MODE.BLOCK_UNITS
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.SDCARD_ADDR_MODE.BLOCK_UNITS.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.SDCARD_ADDR_MODE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.SDCARD_ADDR_MODE.BLOCK_UNITS.value & ~decoded_wr_biten[0:0]) | (decoded_wr_data[0:0] & decoded_wr_biten[0:0]);
+            load_next_c = '1;
+        end
+        field_combo.SDCARD_ADDR_MODE.BLOCK_UNITS.next = next_c;
+        field_combo.SDCARD_ADDR_MODE.BLOCK_UNITS.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.SDCARD_ADDR_MODE.BLOCK_UNITS.value <= 1'h1;
+        end else begin
+            if(field_combo.SDCARD_ADDR_MODE.BLOCK_UNITS.load_next) begin
+                field_storage.SDCARD_ADDR_MODE.BLOCK_UNITS.value <= field_combo.SDCARD_ADDR_MODE.BLOCK_UNITS.next;
+            end
+        end
+    end
+    assign hwif_out.SDCARD_ADDR_MODE.BLOCK_UNITS.value = field_storage.SDCARD_ADDR_MODE.BLOCK_UNITS.value;
 
     //--------------------------------------------------------------------------
     // Write response
@@ -560,7 +794,7 @@ module adc_acquisition_reg #(
     // Readback
     //--------------------------------------------------------------------------
 
-    logic [4:0] rd_mux_addr;
+    logic [5:0] rd_mux_addr;
     assign rd_mux_addr = decoded_addr;
 
     logic readback_err;
@@ -569,15 +803,24 @@ module adc_acquisition_reg #(
     always_comb begin
         automatic logic [31:0] readback_data_var;
         readback_data_var = '0;
-        if(rd_mux_addr == 5'h4) begin
+        if(rd_mux_addr == 6'h4) begin
             readback_data_var[0] = field_storage.STATUS.F0_FULL.value;
             readback_data_var[1] = field_storage.STATUS.F1_FULL.value;
+            readback_data_var[2] = field_storage.STATUS.ADC_OVERFLOW.value;
+            readback_data_var[3] = field_storage.STATUS.SDCARD_DONE.value;
+            readback_data_var[4] = field_storage.STATUS.SDCARD_OVERFLOW.value;
         end
-        if(rd_mux_addr == 5'h8) begin
+        if(rd_mux_addr == 6'h8) begin
             readback_data_var[7:0] = field_storage.CONF.MODE.value;
         end
-        if(rd_mux_addr == 5'hc) begin
+        if(rd_mux_addr == 6'hc) begin
             readback_data_var[31:2] = field_storage.WRITE_HEAD.WORD_ADDRESS.value;
+        end
+        if(rd_mux_addr == 6'h20) begin
+            readback_data_var[31:0] = field_storage.SDCARD_BLOCK_ADDR.BLOCK_ADDR.value;
+        end
+        if(rd_mux_addr == 6'h28) begin
+            readback_data_var[0] = field_storage.SDCARD_ADDR_MODE.BLOCK_UNITS.value;
         end
         readback_data = readback_data_var;
         readback_done = decoded_req & ~decoded_req_is_wr;

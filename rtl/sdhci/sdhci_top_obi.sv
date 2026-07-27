@@ -13,7 +13,7 @@ module sdhci_top_obi #(
   parameter type               obi_req_t         = logic,
   parameter type               obi_rsp_t         = logic,
   parameter int unsigned       ClkPreDiv         = 2,
-  parameter int unsigned       NumDebounceCycles = 500_000,
+  parameter int unsigned       NumDebounceCycles = 1_000_000,
   parameter int unsigned       BufferNumWords    = 256,
   parameter bit                AllowNoncompliantBufferSizes = 1'b0,
   parameter int                TimeoutDivider    = 1

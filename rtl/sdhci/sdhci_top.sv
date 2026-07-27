@@ -36,8 +36,8 @@ module sdhci_top #(
   parameter int unsigned BufferNumWords = 256,
   parameter bit          AllowNoncompliantBufferSizes = 1'b0,
 
-  // clock runs at 50MHz, so 1ms is 50_000 cycles
-  parameter int unsigned       NumDebounceCycles = 500_000 // 10ms
+  // clock runs at 100MHz, so 1ms is 100_000 cycles
+  parameter int unsigned       NumDebounceCycles = 1_000_000 // 10ms
 ) (
   input  logic clk_i,
   input  logic rst_ni,

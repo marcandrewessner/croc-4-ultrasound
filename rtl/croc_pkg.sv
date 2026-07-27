@@ -74,8 +74,8 @@ package croc_pkg;
   ////////////////////////////////
   /// Number of manager ports into crossbar
   /// User Domain, Debug module, Core Data, Core Instr; optionally iDMA Write and iDMA Read
-  /// ADC Acquisition DMA
-  localparam int unsigned NumXbarManagers = 4 + 1 + (iDMAEnable ? 2 : 0);
+  /// ADC: [4]=adc_data_write, [5]=adc_copy_read, [6]=adc_copy_write
+  localparam int unsigned NumXbarManagers = 4 + 3 + (iDMAEnable ? 2 : 0);
 
   /// Enum with crossbar subordinate idxs
   typedef enum bit [4:0] {
@@ -101,12 +101,24 @@ package croc_pkg;
   localparam int unsigned NumXbarSubordinates = $size(CrocAddrMap) + 1;
 
   /// Connectivity matrix for the main crossbar [NumXbarManagers-1:0][NumXbarSubordinates-1:0]
-  /// Default is fully connected. If you use the iDMA you may want to reduce this
-  /// to reduce routing and improve timing for your specific application.
-  /// Eg. if you add something in the user_domain, you may not need connectivity to peripherals
+  /// Subordinate port indices match the idx field in CrocAddrMap:
+  ///   0=Error, 1=Periph, 2=User, 3=SDHCI, 4=Bank0, 5=Bank1, 6=Bank2(ADC), 7=Bank3(ADC)
   function automatic logic [NumXbarManagers-1:0][NumXbarSubordinates-1:0] xbar_connectivity();
-    logic [NumXbarSubordinates-1:0] idma_mask;
-    xbar_connectivity = '1; // full connectivity for all by default
+    xbar_connectivity = '1; // full connectivity by default (CPU, debug, user, iDMA)
+    // [4] adc_data_write: only ADC SRAM banks (Bank2/3) + error
+    xbar_connectivity[4] = '0;
+    xbar_connectivity[4][XbarError]    = 1'b1;
+    xbar_connectivity[4][XbarBank0+2]  = 1'b1; // Bank2: 0x1000_1000
+    xbar_connectivity[4][XbarBank0+3]  = 1'b1; // Bank3: 0x1000_1800
+    // [5] adc_copy_read: only ADC SRAM banks (Bank2/3) + error
+    xbar_connectivity[5] = '0;
+    xbar_connectivity[5][XbarError]    = 1'b1;
+    xbar_connectivity[5][XbarBank0+2]  = 1'b1;
+    xbar_connectivity[5][XbarBank0+3]  = 1'b1;
+    // [6] adc_copy_write: only SDHCI + error
+    xbar_connectivity[6] = '0;
+    xbar_connectivity[6][XbarError]    = 1'b1;
+    xbar_connectivity[6][XbarSDHC]     = 1'b1; // SDHCI: 0x1001_0000
   endfunction
 
   localparam logic [NumXbarManagers-1:0][NumXbarSubordinates-1:0] XbarConnectivity = xbar_connectivity();

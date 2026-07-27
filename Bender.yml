@@ -55,9 +55,8 @@ sources:
       - rtl/croc_domain.sv
       - rtl/user_domain.sv
       # add your design files with modules here
+      - rtl/adc_acquisition/adc_acquisition_sdcard_controller.sv
       - rtl/adc_acquisition/adc_acquisition_top.sv
-      - rtl/adc_acquisition/adc_acquisition_controller.sv
-      - rtl/adc_acquisition/adc_acquisition_fifo.sv
       - rtl/adc_acquisition/reg/adc_acquisition_reg.sv
       # Level 3
       - rtl/croc_soc.sv

@@ -215,9 +215,8 @@
 ../rtl/obi_timer/obi_timer.sv
 ../rtl/croc_domain.sv
 ../rtl/user_domain.sv
+../rtl/adc_acquisition/adc_acquisition_sdcard_controller.sv
 ../rtl/adc_acquisition/adc_acquisition_top.sv
-../rtl/adc_acquisition/adc_acquisition_controller.sv
-../rtl/adc_acquisition/adc_acquisition_fifo.sv
 ../rtl/adc_acquisition/reg/adc_acquisition_reg.sv
 ../rtl/croc_soc.sv
 ../rtl/croc_chip.sv

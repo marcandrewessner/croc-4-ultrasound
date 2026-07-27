@@ -36,7 +36,7 @@ sdhci_top #(
   .reg_rsp_t      ( reg_rsp_t ),
   .ClkPreDiv      ( 2 ),
   .TimeoutDivider ( 1 ), 
-  .NumDebounceCycles ( 500_000 )
+  .NumDebounceCycles ( 1_000_000 )
 ) i_top (
   .*
 );

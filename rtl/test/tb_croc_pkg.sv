@@ -9,7 +9,7 @@
 package tb_croc_pkg;
 
   // Clocks
-  localparam realtime ClkPeriodSys  = 50ns;    // 20 MHz
+  localparam realtime ClkPeriodSys  = 10ns;    // 100 MHz
   localparam realtime ClkPeriodJtag = 50ns;    // 20 MHz
   localparam realtime ClkPeriodRef  = 30518ns; // 32 KiHz
 

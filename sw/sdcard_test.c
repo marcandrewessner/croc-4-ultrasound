@@ -103,9 +103,17 @@ int main() {
         return 3;
     }
 
-    // SD clock at sys/128 (~156 kHz) — safe init frequency per SD spec
-    *reg16(SDHCI_BASE, SDHC_CLOCK_CTL) =
-        SDHC_INTCLK_ENABLE | SDHC_SDCLK_DIV(128) | SDHC_SDCLK_ENABLE;
+    // Program the identification-speed divider (sys/128) with SD_CLOCK_EN
+    // still 0 -- sd_clk_generator only latches a new divider while the SD
+    // clock is disabled -- then wait for it to load before starting the
+    // clock. Safe init frequency per SD spec.
+    *reg16(SDHCI_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE | SDHC_SDCLK_DIV(128);
+    if (spin_until_set16(SDHCI_BASE, SDHC_CLOCK_CTL, SDHC_INTCLK_STABLE)) {
+        printf("FAIL: sdclk div\n");
+        uart_write_flush();
+        return 3;
+    }
+    *reg16(SDHCI_BASE, SDHC_CLOCK_CTL) |= SDHC_SDCLK_ENABLE;
     *reg8(SDHCI_BASE, SDHC_POWER_CTL)   = (SDHC_VOLTAGE_3_3V << SDHC_VOLTAGE_SHIFT) | SDHC_BUS_POWER;
     *reg8(SDHCI_BASE, SDHC_TIMEOUT_CTL) = SDHC_TIMEOUT_MAX;
 
@@ -194,6 +202,21 @@ int main() {
                   SDHC_CRC_CHECK_ENABLE | SDHC_INDEX_CHECK_ENABLE | SDHC_RESP_LEN_48_CHK_BUSY);
     if (r) { printf("FAIL: CMD7=%x\n", r); uart_write_flush(); return 13; }
     printf("Card ready RCA=%x\n", rca);
+
+    // -----------------------------------------------------------------------
+    // Card is selected -- switch from identification speed to full
+    // data-transport speed. SD_CLOCK_EN must go back to 0 while the divider
+    // is reprogrammed, same rule as the initial clock setup above.
+    // -----------------------------------------------------------------------
+    *reg16(SDHCI_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE;                     // SD_CLOCK_EN=0
+    *reg16(SDHCI_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE | SDHC_SDCLK_DIV(0); // fastest divider
+    if (spin_until_set16(SDHCI_BASE, SDHC_CLOCK_CTL, SDHC_INTCLK_STABLE)) {
+        printf("FAIL: sdclk speedup\n");
+        uart_write_flush();
+        return 13;
+    }
+    *reg16(SDHCI_BASE, SDHC_CLOCK_CTL) |= SDHC_SDCLK_ENABLE;
+    printf("SD clock switched to full speed\n");
 
     // -----------------------------------------------------------------------
     // 8. Switch host to 4-bit bus mode (sdModel always uses 4-bit DAT)

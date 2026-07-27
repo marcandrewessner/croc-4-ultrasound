@@ -1,20 +1,23 @@
 
-// TODOs:
-// define errors; overflows....
-// in status register
-
-
 enum adc_mode {
   IDLE                 = 0x00;
   SINGLE_ACQ_F0        = 0x04;
   CONTINUOUS_ACQ_F0_F1 = 0x10;
+  // ping-pong F0/F1 with HW copy to SDCard. The copy engine issues its own
+  // CMD24 (WRITE_BLOCK) per frame, back to back -- software only needs to
+  // configure SDCARD_FRAME_COUNT (how many frames to capture),
+  // SDCARD_BLOCK_ADDR (starting address) and SDCARD_ADDR_MODE (addressing
+  // units) before enabling this mode. 1 frame behaves like the old
+  // SINGLE_SDCARD, N frames like the old CONTINUOUS_SDCARD -- same
+  // mechanism either way.
+  ACQ_SDCARD           = 0x18;
 };
 
 
 addrmap adc_acquisition_reg {
   desc = "Registers for interfacing with the ADC Acquisition Controller & DMA";
   default regwidth = 32;
-  
+
   /////////////////////////////////////
   // ctrl, status, config //
   /////////////////////////////////////
@@ -22,7 +25,7 @@ addrmap adc_acquisition_reg {
   reg {
     name = "Control";
     desc = "execute commands directly by writing single command bits";
-    
+
     field {
       name = "reset_write_head";
       desc = "Resets the write head position back to F0_START_ADDR";
@@ -41,7 +44,15 @@ addrmap adc_acquisition_reg {
 
     clr_fx_full_f CLEAR_F0_FULL = 0;
     clr_fx_full_f CLEAR_F1_FULL = 0;
-    
+
+    field {
+      name = "clear_status";
+      desc = "Clears ADC_OVERFLOW, SDCARD_DONE, SDCARD_OVERFLOW status flags";
+      hw   = r;
+      sw   = w;
+      singlepulse;
+    } CLEAR_STATUS = 0;
+
   } CNTRL;
 
   reg {
@@ -58,12 +69,33 @@ addrmap adc_acquisition_reg {
     fx_full_f F0_FULL = 0;
     fx_full_f F1_FULL = 0;
 
+    field {
+      name = "adc_overflow";
+      desc = "ADC CDC FIFO was full when a new sample arrived; at least one sample was dropped. Clear with CLEAR_STATUS.";
+      hw   = rw;
+      sw   = r;
+    } ADC_OVERFLOW = 0;
+
+    field {
+      name = "sdcard_done";
+      desc = "HW copy engine finished transferring a frame into the SDHCI buffer. Clear with CLEAR_STATUS.";
+      hw   = rw;
+      sw   = r;
+    } SDCARD_DONE = 0;
+
+    field {
+      name = "sdcard_overflow";
+      desc = "A frame became full while BUFFER_WRITE_READY was not set (SDHCI not ready). ADC stopped. Clear with CLEAR_STATUS.";
+      hw   = rw;
+      sw   = r;
+    } SDCARD_OVERFLOW = 0;
+
   } STATUS;
 
   reg {
     name="Config";
     desc="config register for adc controller";
-    
+
     field {
       name   = "Acquisition System Mode";
       desc   = "configure acquisition system mode (idle, running in mode x, ...)";
@@ -102,5 +134,42 @@ addrmap adc_acquisition_reg {
   address_config_r F0_END_ADDR;
   address_config_r F1_START_ADDR;
   address_config_r F1_END_ADDR;
+
+  //////////////////////////////////////
+  // SDCard configuration             //
+  //////////////////////////////////////
+
+  reg {
+    name = "SDCard Block Address";
+    desc = "Current CMD24 argument for the HW copy engine in ACQ_SDCARD mode. Software sets the starting value; hardware advances it after each block by the amount SDCARD_ADDR_MODE selects (see there). Units (block number vs. byte address) are also selected by SDCARD_ADDR_MODE.";
+    field {
+      name = "Block Address";
+      desc = "CMD24 argument -- a block number or a byte address, per SDCARD_ADDR_MODE";
+      hw   = rw;
+      sw   = rw;
+    } BLOCK_ADDR[31:0] = 0;
+  } SDCARD_BLOCK_ADDR;
+
+  reg {
+    name = "SDCard Frame Count";
+    desc = "Number of frames the ADC-fill side may dispatch to the HW copy engine in ACQ_SDCARD mode before it stops raising Fx_FULL, independent of how long dispatched jobs take to physically finish. Each frame is written with its own CMD24 (WRITE_BLOCK); this is the only place the total frame count is configured.";
+    field {
+      name = "Frame Count";
+      desc = "Target frame count for the current SDCard capture (N)";
+      hw   = r;
+      sw   = w;
+    } FRAME_COUNT[31:0] = 0;
+  } SDCARD_FRAME_COUNT;
+
+  reg {
+    name = "SDCard Address Mode";
+    desc = "Selects how SDCARD_BLOCK_ADDR is interpreted and advanced by the HW copy engine.";
+    field {
+      name = "Block Units";
+      desc = "1 = block addressing (SDHC/SDXC-style): SDCARD_BLOCK_ADDR is a raw block number, advanced by 1 per block. 0 = byte addressing (standard-capacity-style): SDCARD_BLOCK_ADDR is a byte address, advanced by this frame's byte count per block.";
+      hw   = r;
+      sw   = rw;
+    } BLOCK_UNITS = 1;
+  } SDCARD_ADDR_MODE;
 
 };
