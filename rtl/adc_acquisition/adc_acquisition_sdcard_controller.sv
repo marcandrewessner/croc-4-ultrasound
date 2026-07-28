@@ -2,19 +2,39 @@
 //
 // Software is responsible for SD card initialisation (CMD0..CMD16: reset,
 // identify, select, 4-bit bus, block length) before enabling ACQ_SDCARD
-// mode. From that point on, this module owns the SD protocol for every
-// block by itself: it issues its own CMD24 (WRITE_BLOCK) per frame, back
-// to back, one at a time -- there is no multi-block CMD25/AUTO_CMD12
-// session to open or close. This is a deliberate departure from an
-// earlier multi-block design: with CMD25(BLOCK_COUNT=N), only the
-// session's *last* block gets a real TRANSFER_COMPLETE, every other block
-// is judged done via BUFFER_WRITE_READY re-asserting, which reflects
-// SDHCI-internal double-buffer occupancy, not physical completion of the
-// specific block just copied. Per-block CMD24 sidesteps that: SDHCI
-// forces its internal block counter to 1 for single-block mode
-// (dat_wrap.sv's new_block_count computation) regardless of BLOCK_COUNT,
-// so TRANSFER_COMPLETE fires directly off *this* block's real completion,
-// every time, with no double-buffering ambiguity.
+// mode. From that point on, this module owns the SD protocol by itself:
+// per job it opens one CMD25 (WRITE_MULTIPLE_BLOCK) session covering the
+// whole frame -- SDCARD_BLOCK_COUNT blocks of SDCARD_BLOCK_SIZE bytes --
+// streams every word of the frame into the SDHCI data port back to back,
+// and lets AUTO_CMD12 close the session.
+//
+// A "frame" here is one entire SRAM bank (2 KiB = 4 x 512 B blocks), not
+// one SD block: adc_acquisition_top ping-pongs the two banks, so the ADC
+// fills one while this engine streams the other out.
+//
+// Relation to the earlier per-block CMD24 design (DATAPATH.md §1): that
+// design existed because banks had to be released one block at a time,
+// which needed a per-block notion of "physically committed", and
+// BUFFER_WRITE_READY -- the only per-block event a CMD25 session offers --
+// does not mean that (it reflects SDHCI-internal buffer occupancy). Here
+// nothing needs per-block completion: the bank is released once, at the
+// end of the session, on the session's single real TRANSFER_COMPLETE.
+// BWR is therefore used only for what it actually is, flow control, and
+// only once, to confirm the card is ready for the session's first data.
+// The ambiguity §1 walked away from is designed out rather than managed.
+//
+// Backpressure: the engine does *not* pace itself per block. It pushes the
+// frame's words continuously and relies on the SDHCI data port withholding
+// the OBI grant when its 1 KiB buffer is full (dat_buffer.sv's
+// buffer_data_port_write_ready_o -> reg_ready -> gnt, routed
+// unconditionally in sdhci_top.sv). That is what makes streaming a 2 KiB
+// frame through a 1 KiB buffer correct. Note this only works because the
+// block-boundary logic in dat_buffer.sv forces buffer_write_enable_o (the
+// status/interrupt bit) low for a cycle without touching
+// buffer_data_port_write_ready_o, so the data path itself never closes
+// mid-session. If the SD side falls behind far enough, the grant simply
+// stalls this FSM; if it falls behind while the SDHCI buffer is empty,
+// dat_wrap.sv pauses the SD clock instead of underrunning the block.
 //
 // This module is a passive subordinate to adc_acquisition_top's control
 // logic: it does not watch CONF.MODE or STATUS.Fx_FULL itself, it only
@@ -23,17 +43,22 @@
 // frame) and reports back via busy_o plus the existing *_set_o/*_clear_o
 // pulses. It never re-arms itself -- every copy job is initiated from the
 // outside, one at a time, and the module parks in CE_IDLE (busy_o low)
-// between jobs. busy_o now spans the *entire* per-block transaction. from
-// issuing CMD24 through the card's physical write completing. there is no
-// state where the module reports idle while a block is still in flight.
+// between jobs. busy_o spans the *entire* session, from issuing CMD25
+// through AUTO_CMD12 and the card's final program completing; there is no
+// state where the module reports idle while data is still in flight.
 //
 // Per job:
 //   1. On start_i, latch which frame to copy (copy_f0_i), its word count
 //      (Fx_END_ADDR - Fx_START_ADDR + 1), and whether this is the
 //      capture's last frame (is_last_frame_i).
-//   2. CE_CLEAR_STALE_STATUS: W1C-clear TRANSFER_COMPLETE and every
-//      EINTR_STATUS bit unconditionally, before this job's own CMD24 is
-//      even issued. TRANSFER_COMPLETE fires on any 1->0 edge of
+//   2. CE_CLEAR_STALE_STATUS: W1C-clear every NINTR_STATUS bit this FSM
+//      polls (TRANSFER_COMPLETE, BUFFER_WRITE_READY, COMMAND_COMPLETE) and
+//      every EINTR_STATUS bit, unconditionally, before this job's own CMD25
+//      is even issued. BWR in particular *must* be discarded here: a CMD25
+//      session leaves it set from its last block boundary and nothing else
+//      clears it, so the next session would otherwise match a leftover on
+//      its first poll -- see the state body.
+//      TRANSFER_COMPLETE fires on any 1->0 edge of
 //      command_inhibit_dat, which includes busy-checked commands with no
 //      data phase at all (e.g. CMD7 during sd_init()) -- a real event
 //      that nothing else ever clears. Skipping this step means the next
@@ -69,13 +94,16 @@
 //      CMD_INHIBIT_CMD and CMD_INHIBIT_DAT are clear -- the card must be
 //      idle before a new command can be issued.
 //   4. CE_SET_BLOCK_SIZE / CE_SET_TRANSFER_MODE / CE_SET_ARGUMENT /
-//      CE_SUBMIT_CMD24: write BLOCK_SIZE (this frame's byte count),
-//      TRANSFER_MODE (all-zero: single-block, write direction, no
-//      AUTO_CMD12, no block-count-enable -- none of that machinery is
-//      needed for a plain single-block write), ARGUMENT (the current
-//      SDCARD_BLOCK_ADDR value, used as-is regardless of addressing
-//      mode -- see block_addr_advance below), then COMMAND itself
-//      (index 24, R1 response, DATA_PRESENT_SELECT). TRANSFER_MODE and
+//      CE_SUBMIT_CMD25: write BLOCK_SIZE and BLOCK_COUNT (one OBI write --
+//      they are the low and high halves of the same 32-bit SDHCI register
+//      at offset 0x04, so a be=4'hf write sets both), TRANSFER_MODE
+//      (multi-block, block-count-enable, AUTO_CMD12, write direction),
+//      ARGUMENT (the current SDCARD_BLOCK_ADDR value, used as-is
+//      regardless of addressing mode -- see block_addr_advance below),
+//      then COMMAND itself (index 25, R1 response, DATA_PRESENT_SELECT).
+//      block-count-enable is what makes SDHCI end the session -- and raise
+//      TRANSFER_COMPLETE -- after exactly BLOCK_COUNT blocks
+//      (dat_wrap.sv's transmitted_block_counter). TRANSFER_MODE and
 //      COMMAND are bits of the *same* physical 32-bit SDHCI register
 //      (byte offsets 0x0c/0x0e) but are written as two separate OBI
 //      transactions, matching every existing example in this codebase,
@@ -88,26 +116,53 @@
 //      that may not have actually been accepted. Full EINTR_STATUS
 //      decoding is still not implemented -- same documented limitation
 //      as before, just no longer silently ignored at the command level.
+//
+//      Do not be tempted to skip this wait and go straight to BWR: it is
+//      what keeps the session's block count correct. dat_wrap.sv latches
+//      transmitted_block_counter from BLOCK_COUNT while write_state_q is
+//      WAIT_FOR_RSP, leaving it only on sd_rsp_done_i -- but the buffer
+//      goes live (and BWR can rise) as soon as dat_state becomes WRITE,
+//      which is at command *start*, before the response. Meanwhile
+//      dat_buffer.sv decrements the very same BLOCK_COUNT register on each
+//      block *pushed*. So a copier that started pushing before the response
+//      landed could decrement BLOCK_COUNT below its intended value before
+//      dat_wrap ever sampled it, and the session would end one or more
+//      blocks early. Waiting for COMMAND_COMPLETE -- which is derived from
+//      the same response event as sd_rsp_done_i -- plus the ack round trip
+//      puts the first push comfortably after the latch.
 //   6. CE_ACK_CMD_COMPLETE: W1C-clear COMMAND_COMPLETE.
-//   7. CE_WAIT_BUFFER_READY: poll for BUFFER_WRITE_READY (bit 4) -- the
-//      card signals it's ready for this block's data.
-//   8. CE_COPY_WORD: pipelined SRAM -> SDHCI BUFFER_DATA_PORT copy, one
-//      word in flight at a time. The next SRAM read is only issued once
-//      the previous word has actually been written (copy_write grant
-//      seen), since copy_write can be backpressured by SDHCI for an
-//      arbitrary number of cycles.
-//   9. CE_ACK_BUFFERED: W1C-clear BWR -- tells SDHCI this block's words
-//      are all in its buffer.
-//  10. CE_WAIT_TRANSFER_COMPLETE: poll for TRANSFER_COMPLETE (bit 1)
-//      only -- unlike the old multi-block design there is no second
-//      condition to race against: BUFFER_WRITE_READY structurally cannot
-//      re-assert for a single-block command (SDHCI's internal block
-//      counter is pinned to 1), so TRANSFER_COMPLETE is the only outcome
-//      that ever arrives here, and (now that step 2 discards any stale
-//      leftover) it genuinely means this specific block is physically
-//      written and the card is idle again.
+//   7. CE_WAIT_BUFFER_READY: poll for BUFFER_WRITE_READY (bit 4) once --
+//      the card is ready for the session's data. Not repeated per block:
+//      see the backpressure note above.
+//   8. CE_COPY_WORD: pipelined SRAM -> SDHCI BUFFER_DATA_PORT copy of the
+//      whole frame, one word in flight at a time. The next SRAM read is
+//      only issued once the previous word has actually been written
+//      (copy_write grant seen), since copy_write is backpressured by
+//      SDHCI for an arbitrary number of cycles whenever its buffer fills
+//      -- which, streaming a 2 KiB frame through a 1 KiB buffer, is the
+//      normal case rather than an exception.
+//   9. CE_ACK_BUFFERED: W1C-clear BWR -- the session's words are all in
+//      SDHCI's hands.
+//  10. CE_WAIT_TRANSFER_COMPLETE: poll for TRANSFER_COMPLETE (bit 1).
+//      With block-count-enable set, SDHCI raises this exactly once, when
+//      the last of BLOCK_COUNT blocks has been framed on the bus
+//      (dat_wrap.sv: DONE_WRITING_BLOCK loops back per block and only
+//      reaches DONE_WRITING at transmitted_block_counter == 1, dropping
+//      command_inhibit_dat, which is what sets the bit). There is no
+//      per-block event to race against here because none is used.
 //  11. CE_ACK_TRANSFER_COMPLETE: W1C-clear TRANSFER_COMPLETE.
-//  12. CE_WAIT_CARD_READY: poll PRESENT_STATE until the *card* says it is
+//  12. CE_WAIT_AUTOCMD12_COMPLETE: poll for a *fresh* COMMAND_COMPLETE,
+//      which belongs to the AUTO_CMD12 that dat_wrap.sv requested on the
+//      same WRITE->READY edge that produced TRANSFER_COMPLETE (its own
+//      CMD25 COMMAND_COMPLETE was already consumed at step 6, so there is
+//      no ambiguity). Necessary because AUTO_CMD12 is R1b: its busy
+//      period re-raises command_inhibit_dat shortly *after*
+//      TRANSFER_COMPLETE, so polling PRESENT_STATE directly could sample
+//      the gap in between and read "idle" while CMD12 is still pending.
+//      ERROR_INTERRUPT is checked here too -- an AUTO_CMD12 failure sets
+//      EINTR_STATUS bit 8, which ORs into it.
+//  13. CE_ACK_AUTOCMD12_COMPLETE: W1C-clear COMMAND_COMPLETE again.
+//  14. CE_WAIT_CARD_READY: poll PRESENT_STATE until the *card* says it is
 //      done, not just the host controller: CMD_INHIBIT_CMD/DAT clear AND
 //      DAT0's line level (bit 20) back high. TRANSFER_COMPLETE only means
 //      SDHCI's own write FSM finished framing the block on the bus; the
@@ -118,17 +173,20 @@
 //      state body for the full trace. This wait is inside busy_o and
 //      before CE_DONE on purpose: SDCARD_DONE and the Fx_FULL release must
 //      not fire until the block is physically committed.
-//  13. CE_DONE: release the bank (Fx_FULL clear), advance
-//      SDCARD_BLOCK_ADDR by block_addr_advance_o (+1 for block
-//      addressing, +this frame's byte count for byte addressing -- see
-//      SDCARD_ADDR_MODE), and -- only if this was the capture's last
-//      frame (is_last_frame_q, latched from is_last_frame_i at step 1) --
-//      set SDCARD_DONE. Every other frame releases its bank and advances
-//      the address exactly the same way, just without SDCARD_DONE.
+//  15. CE_DONE: release the bank (Fx_FULL clear), advance
+//      SDCARD_BLOCK_ADDR by block_addr_advance_o (+SDCARD_BLOCK_COUNT for
+//      block addressing, +this frame's byte count for byte addressing --
+//      see SDCARD_ADDR_MODE; note the card advances internally *within*
+//      the session, so this register is written once per session, not per
+//      block), and -- only if this was the capture's last frame
+//      (is_last_frame_q, latched from is_last_frame_i at step 1) -- set
+//      SDCARD_DONE. Every other frame releases its bank and advances the
+//      address exactly the same way, just without SDCARD_DONE.
 //
-// Error handling: command-level errors (step 5) fall through to
-// CE_OVERFLOW; data/CRC errors on the block itself are still not
-// decoded. SDHCI EINTR_STATUS remains visible to software for
+// Error handling: command-level errors (steps 5 and 12) fall through to
+// CE_OVERFLOW, as does a copy that stalls longer than POLL_TIMEOUT on the
+// SDHCI data port (step 8). Data/CRC errors on the blocks themselves are
+// still not decoded. SDHCI EINTR_STATUS remains visible to software for
 // diagnostics. A future revision can add a proper CE_ERROR sink state.
 
 `include "common_cells/registers.svh"
@@ -175,6 +233,8 @@ module adc_acquisition_sdcard_controller
   // SDHCI address constants (XbarSDHC base = 0x1001_0000)
   // -------------------------------------------------------------------------
   localparam logic [31:0] SDHCI_BASE          = 32'h1001_0000;
+  // BLOCK_SIZE occupies bits [11:0] and BLOCK_COUNT bits [31:16] of this one
+  // 32-bit register (sdhci_reg_top.sv), so a single be=4'hf write sets both.
   localparam logic [31:0] SDHCI_BLOCK_SIZE    = SDHCI_BASE + 32'h04;
   localparam logic [31:0] SDHCI_ARGUMENT      = SDHCI_BASE + 32'h08;
   localparam logic [31:0] SDHCI_XFER_CMD      = SDHCI_BASE + 32'h0c; // TRANSFER_MODE (lo16) + COMMAND (hi16)
@@ -194,19 +254,31 @@ module adc_acquisition_sdcard_controller
   localparam logic [15:0] BWR_BIT             = 16'h0010; // NINTR_STATUS bit 4 (BUFFER_WRITE_READY)
   localparam logic [15:0] ERROR_BIT           = 16'h8000; // NINTR_STATUS bit 15 (ERROR_INTERRUPT)
 
-  // COMMAND register (upper 16 bits of SDHCI_XFER_CMD): CMD24 (WRITE_BLOCK),
-  // R1 response (no inherent busy-check -- the write's busy period happens
-  // later, on DAT0, handled internally by SDHCI's own write FSM), CRC/index
-  // checked, data phase present.
-  localparam logic [7:0]  CMD24_INDEX             = 8'd24;
+  // COMMAND register (upper 16 bits of SDHCI_XFER_CMD): CMD25
+  // (WRITE_MULTIPLE_BLOCK), R1 response (no inherent busy-check -- the
+  // write's busy periods happen later, on DAT0, handled internally by SDHCI's
+  // own write FSM), CRC/index checked, data phase present.
+  localparam logic [7:0]  CMD25_INDEX             = 8'd25;
   localparam int unsigned CMD_INDEX_SHIFT         = 8;
   localparam logic [15:0] CMD_DATA_PRESENT_SELECT = 16'h0020; // bit 5
   localparam logic [15:0] CMD_CRC_CHECK_ENABLE    = 16'h0008; // bit 3
   localparam logic [15:0] CMD_INDEX_CHECK_ENABLE  = 16'h0010; // bit 4
   localparam logic [15:0] CMD_RESP_LEN_48         = 16'h0002; // bits [1:0]
-  localparam logic [15:0] CMD24_VALUE             =
-    (16'(CMD24_INDEX) << CMD_INDEX_SHIFT) | CMD_DATA_PRESENT_SELECT |
+  localparam logic [15:0] CMD25_VALUE             =
+    (16'(CMD25_INDEX) << CMD_INDEX_SHIFT) | CMD_DATA_PRESENT_SELECT |
     CMD_CRC_CHECK_ENABLE | CMD_INDEX_CHECK_ENABLE | CMD_RESP_LEN_48;
+
+  // TRANSFER_MODE (lower 16 bits of SDHCI_XFER_CMD), sdhci_reg_top.sv:552-555:
+  //   bit 1 block_count_enable  -- honour BLOCK_COUNT, so SDHCI ends the
+  //                                session after exactly that many blocks
+  //   bit 2 auto_cmd12_enable   -- issue CMD12 automatically at session end
+  //   bit 4 data_transfer_direction_select, 0 = write (left clear)
+  //   bit 5 multi_single_block_select, 1 = multi-block
+  localparam logic [15:0] XFER_MODE_BLOCK_COUNT_EN = 16'h0002;
+  localparam logic [15:0] XFER_MODE_AUTO_CMD12     = 16'h0004;
+  localparam logic [15:0] XFER_MODE_MULTI_BLOCK    = 16'h0020;
+  localparam logic [15:0] XFER_MODE_VALUE          =
+    XFER_MODE_MULTI_BLOCK | XFER_MODE_AUTO_CMD12 | XFER_MODE_BLOCK_COUNT_EN;
 
   // Upper bound (in cycles) on how long any single poll in this FSM retries
   // before giving up and declaring SDCARD_OVERFLOW -- shared by every
@@ -219,21 +291,24 @@ module adc_acquisition_sdcard_controller
   // -------------------------------------------------------------------------
   // FSM
   // -------------------------------------------------------------------------
-  typedef enum logic [4:0] {
+  // 6 bits: the session flow is 34 states, past what [4:0] holds.
+  typedef enum logic [5:0] {
     CE_IDLE,                                            // parked: wait for start_i
     CE_CLEAR_STALE_STATUS, CE_CLEAR_STALE_STATUS_RSP,    // discard leftover TRANSFER_COMPLETE/EINTR_STATUS
     CE_WAIT_CMD_INHIBIT, CE_WAIT_CMD_INHIBIT_RSP,        // PRESENT_STATE: card idle?
-    CE_SET_BLOCK_SIZE, CE_SET_BLOCK_SIZE_RSP,
+    CE_SET_BLOCK_SIZE, CE_SET_BLOCK_SIZE_RSP,            // BLOCK_SIZE + BLOCK_COUNT, one write
     CE_SET_TRANSFER_MODE, CE_SET_TRANSFER_MODE_RSP,
     CE_SET_ARGUMENT, CE_SET_ARGUMENT_RSP,
-    CE_SUBMIT_CMD24, CE_SUBMIT_CMD24_RSP,                // this is what actually issues CMD24
+    CE_SUBMIT_CMD25, CE_SUBMIT_CMD25_RSP,                // this is what actually issues CMD25
     CE_WAIT_CMD_COMPLETE, CE_WAIT_CMD_COMPLETE_RSP,
     CE_ACK_CMD_COMPLETE, CE_ACK_CMD_COMPLETE_RSP,
-    CE_WAIT_BUFFER_READY, CE_WAIT_BUFFER_READY_RSP,      // room for this block's data?
-    CE_COPY_WORD,                                        // pipelined SRAM->SDHCI copy
+    CE_WAIT_BUFFER_READY, CE_WAIT_BUFFER_READY_RSP,      // card ready for session data?
+    CE_COPY_WORD,                                        // pipelined SRAM->SDHCI copy, whole frame
     CE_ACK_BUFFERED, CE_ACK_BUFFERED_RSP,                // W1C-clear BWR
-    CE_WAIT_TRANSFER_COMPLETE, CE_WAIT_TRANSFER_COMPLETE_RSP, // single condition now, no race
+    CE_WAIT_TRANSFER_COMPLETE, CE_WAIT_TRANSFER_COMPLETE_RSP, // one per session
     CE_ACK_TRANSFER_COMPLETE, CE_ACK_TRANSFER_COMPLETE_RSP,
+    CE_WAIT_AUTOCMD12_COMPLETE, CE_WAIT_AUTOCMD12_COMPLETE_RSP, // AUTO_CMD12 (R1b) issued+responded?
+    CE_ACK_AUTOCMD12_COMPLETE, CE_ACK_AUTOCMD12_COMPLETE_RSP,
     CE_WAIT_CARD_READY, CE_WAIT_CARD_READY_RSP,          // card off DAT0-busy (PRG -> TRAN)?
     CE_DONE,                                             // release bank, advance address, maybe SDCARD_DONE
     CE_OVERFLOW                                          // timeout or command error
@@ -250,13 +325,16 @@ module adc_acquisition_sdcard_controller
   `FF(is_last_frame_q, is_last_frame_d, 1'b0, clk_i, rst_ni)
 
   // Word count of the frame being copied, latched at job start from
-  // (Fx_END_ADDR - Fx_START_ADDR + 1) -- see header comment.
-  logic [9:0] frame_words_d, frame_words_q;
-  `FF(frame_words_q, frame_words_d, 10'd128, clk_i, rst_ni)
+  // (Fx_END_ADDR - Fx_START_ADDR + 1) -- see header comment. 11 bits: a
+  // frame is now a whole SRAM bank (2 KiB = 512 words) rather than a single
+  // 512 B block, and the width is one bit wider than that needs so a larger
+  // bank does not become a silent truncation.
+  logic [10:0] frame_words_d, frame_words_q;
+  `FF(frame_words_q, frame_words_d, 11'd512, clk_i, rst_ni)
 
   // Copy counters
-  logic [9:0] rd_idx_d, rd_idx_q; // SRAM reads issued (0..frame_words_q)
-  logic [9:0] wr_idx_d, wr_idx_q; // SDHCI writes done (0..frame_words_q)
+  logic [10:0] rd_idx_d, rd_idx_q; // SRAM reads issued (0..frame_words_q)
+  logic [10:0] wr_idx_d, wr_idx_q; // SDHCI writes done (0..frame_words_q)
   `FF(rd_idx_q, rd_idx_d, '0, clk_i, rst_ni)
   `FF(wr_idx_q, wr_idx_d, '0, clk_i, rst_ni)
 
@@ -277,9 +355,10 @@ module adc_acquisition_sdcard_controller
 
   // Cycles spent in the current poll. Reset on entry to each CE_WAIT_*
   // state (CE_WAIT_CMD_INHIBIT, CE_WAIT_CMD_COMPLETE, CE_WAIT_BUFFER_READY,
-  // CE_WAIT_TRANSFER_COMPLETE); checked against POLL_TIMEOUT in each
-  // corresponding *_RSP state. One counter suffices since these waits are
-  // never concurrent.
+  // CE_WAIT_TRANSFER_COMPLETE, CE_WAIT_AUTOCMD12_COMPLETE,
+  // CE_WAIT_CARD_READY); checked against POLL_TIMEOUT in each corresponding
+  // *_RSP state. Also reused by CE_COPY_WORD as its stall counter -- see
+  // there. One counter suffices since these waits are never concurrent.
   logic [19:0] poll_timeout_cnt_d, poll_timeout_cnt_q;
   `FF(poll_timeout_cnt_q, poll_timeout_cnt_d, '0, clk_i, rst_ni)
 
@@ -306,19 +385,23 @@ module adc_acquisition_sdcard_controller
     ? (reg2hw.F0_END_ADDR.WORD_ADDRESS.value - reg2hw.F0_START_ADDR.WORD_ADDRESS.value) + 30'd1
     : (reg2hw.F1_END_ADDR.WORD_ADDRESS.value - reg2hw.F1_START_ADDR.WORD_ADDRESS.value) + 30'd1;
 
-  // CMD24's argument is SDCARD_BLOCK_ADDR's current value, used as-is
+  // CMD25's argument is SDCARD_BLOCK_ADDR's current value, used as-is
   // regardless of addressing mode -- the mode only changes how much gets
-  // added to it afterward (see block_addr_advance_o below).
-  logic [31:0] cmd24_argument;
-  assign cmd24_argument = reg2hw.SDCARD_BLOCK_ADDR.BLOCK_ADDR.value;
+  // added to it afterward (see block_addr_advance_o below). Only the
+  // session's *starting* address is ever sent: within a CMD25 session the
+  // card advances its own write pointer per block.
+  logic [31:0] cmd25_argument;
+  assign cmd25_argument = reg2hw.SDCARD_BLOCK_ADDR.BLOCK_ADDR.value;
 
-  // How far to advance SDCARD_BLOCK_ADDR once this block completes:
-  // block addressing (BLOCK_UNITS=1) advances by one block; byte addressing
-  // (BLOCK_UNITS=0) advances by this frame's byte count, derived from
-  // frame_words_q so block size has a single source of truth.
+  // How far to advance SDCARD_BLOCK_ADDR once this *session* completes:
+  // block addressing (BLOCK_UNITS=1) advances by the session's block count;
+  // byte addressing (BLOCK_UNITS=0) advances by the frame's byte count,
+  // derived from frame_words_q. The two agree by construction as long as
+  // software keeps SDCARD_BLOCK_SIZE * SDCARD_BLOCK_COUNT equal to the frame
+  // size, since a frame's byte count is exactly blocks * block_size.
   assign block_addr_advance_o = reg2hw.SDCARD_ADDR_MODE.BLOCK_UNITS.value
-    ? 32'd1
-    : {20'b0, frame_words_q, 2'b00};
+    ? {16'b0, reg2hw.SDCARD_BLOCK_COUNT.BLOCK_COUNT.value}
+    : {19'b0, frame_words_q, 2'b00};
 
   // Builds a single-word OBI request. Every state below assigns
   // copy_read_req_o/copy_write_req_o = obi_read(...)/obi_write(...) instead
@@ -377,14 +460,14 @@ module adc_acquisition_sdcard_controller
         if (start_i) begin
           copying_f0_d       = copy_f0_i;
           is_last_frame_d    = is_last_frame_i;
-          frame_words_d      = frame_words_next[9:0];
+          frame_words_d      = frame_words_next[10:0];
           state_d            = CE_CLEAR_STALE_STATUS;
         end
       end
 
       // --------------------------------------------------------------------
       // W1C-clear TRANSFER_COMPLETE and every EINTR_STATUS bit
-      // unconditionally before this job's own CMD24 is even issued. Both
+      // unconditionally before this job's own CMD25 is even issued. Both
       // halves live in the same 32-bit SDHCI_NINTR word (NINTR_STATUS in
       // the low 16 bits, EINTR_STATUS in the high 16), so one OBI write
       // covers both.
@@ -412,11 +495,28 @@ module adc_acquisition_sdcard_controller
       // held ERROR_INTERRUPT set into job 2, and job 2's very first
       // CE_WAIT_CMD_COMPLETE_RSP check sent it straight to CE_OVERFLOW.
       //
-      // Clearing here happens before this job's own CMD24 can possibly
+      // BUFFER_WRITE_READY is cleared here too, and the multi-block design
+      // is what makes that mandatory rather than merely tidy. In a CMD25
+      // session BWR re-asserts at *every* block boundary
+      // (dat_buffer.sv pulses buffer_write_enable low per block to raise it),
+      // but this FSM only acks it once, at CE_ACK_BUFFERED. So a session
+      // reliably ends with BWR set again from its final block boundary, and
+      // nothing else in the system clears it. Without clearing it here, the
+      // *next* session's CE_WAIT_BUFFER_READY would match that leftover on
+      // its first poll and start streaming before the card had asked for
+      // data -- structurally the same stale-sticky-status bug as the
+      // TRANSFER_COMPLETE and data_timeout_error cases above, which is
+      // exactly why all three bits this FSM ever polls are discarded in one
+      // write. COMMAND_COMPLETE is included for the same reason even though
+      // both of a session's occurrences (CMD25's and AUTO_CMD12's) are
+      // individually acked.
+      //
+      // Clearing here happens before this job's own CMD25 can possibly
       // cause a fresh edge or a fresh error, so there's no race with a
       // real completion or a real error from *this* job.
       CE_CLEAR_STALE_STATUS: begin
-        copy_write_req_o = obi_write(SDHCI_NINTR, {16'hffff, XFER_BIT}, 4'hf);
+        copy_write_req_o = obi_write(
+          SDHCI_NINTR, {16'hffff, XFER_BIT | BWR_BIT | CMD_COMPLETE_BIT}, 4'hf);
         if (copy_write_rsp_i.gnt)
           state_d = CE_CLEAR_STALE_STATUS_RSP;
       end
@@ -453,15 +553,21 @@ module adc_acquisition_sdcard_controller
 
       // --------------------------------------------------------------------
       // Command setup: BLOCK_SIZE, then TRANSFER_MODE, then ARGUMENT, then
-      // the COMMAND write itself (CE_SUBMIT_CMD24) that actually issues
-      // CMD24. TRANSFER_MODE and COMMAND share one physical 32-bit SDHCI
+      // the COMMAND write itself (CE_SUBMIT_CMD25) that actually issues
+      // CMD25. TRANSFER_MODE and COMMAND share one physical 32-bit SDHCI
       // register (different byte lanes) but are written separately -- see
       // header comment.
       CE_SET_BLOCK_SIZE: begin
-        // BLOCK_SIZE.transfer_block_size is bits [11:0] of the low
-        // halfword; frame_words_q*4 (this frame's byte count) fits there
-        // for any realistic frame size.
-        copy_write_req_o = obi_write(SDHCI_BLOCK_SIZE, {20'b0, frame_words_q, 2'b00}, 4'h3);
+        // One write covers both halves of the 0x04 register:
+        // BLOCK_SIZE.transfer_block_size in bits [11:0] and BLOCK_COUNT in
+        // [31:16]. Unlike the per-block design, the block size comes from
+        // SDCARD_BLOCK_SIZE rather than the frame's byte count -- a frame is
+        // now SDCARD_BLOCK_COUNT blocks, not one.
+        copy_write_req_o = obi_write(
+          SDHCI_BLOCK_SIZE,
+          {reg2hw.SDCARD_BLOCK_COUNT.BLOCK_COUNT.value,
+           4'b0, reg2hw.SDCARD_BLOCK_SIZE.BLOCK_SIZE.value},
+          4'hf);
         if (copy_write_rsp_i.gnt)
           state_d = CE_SET_BLOCK_SIZE_RSP;
       end
@@ -472,9 +578,11 @@ module adc_acquisition_sdcard_controller
       end
 
       CE_SET_TRANSFER_MODE: begin
-        // All-zero: single-block, write direction, no AUTO_CMD12, no
-        // block-count-enable -- none of that is needed for CMD24.
-        copy_write_req_o = obi_write(SDHCI_XFER_CMD, 32'h0, 4'h1);
+        // Multi-block + block-count-enable + AUTO_CMD12, write direction
+        // (direction bit left clear). block-count-enable is what bounds the
+        // session to BLOCK_COUNT blocks and therefore what makes
+        // TRANSFER_COMPLETE fire exactly once, at the end of the frame.
+        copy_write_req_o = obi_write(SDHCI_XFER_CMD, {16'h0, XFER_MODE_VALUE}, 4'h3);
         if (copy_write_rsp_i.gnt)
           state_d = CE_SET_TRANSFER_MODE_RSP;
       end
@@ -485,24 +593,24 @@ module adc_acquisition_sdcard_controller
       end
 
       CE_SET_ARGUMENT: begin
-        copy_write_req_o = obi_write(SDHCI_ARGUMENT, cmd24_argument, 4'hf);
+        copy_write_req_o = obi_write(SDHCI_ARGUMENT, cmd25_argument, 4'hf);
         if (copy_write_rsp_i.gnt)
           state_d = CE_SET_ARGUMENT_RSP;
       end
 
       CE_SET_ARGUMENT_RSP: begin
         if (copy_write_rsp_i.rvalid)
-          state_d = CE_SUBMIT_CMD24;
+          state_d = CE_SUBMIT_CMD25;
       end
 
-      // This write is what actually issues CMD24.
-      CE_SUBMIT_CMD24: begin
-        copy_write_req_o = obi_write(SDHCI_XFER_CMD, {CMD24_VALUE, 16'h0}, 4'hc);
+      // This write is what actually issues CMD25.
+      CE_SUBMIT_CMD25: begin
+        copy_write_req_o = obi_write(SDHCI_XFER_CMD, {CMD25_VALUE, 16'h0}, 4'hc);
         if (copy_write_rsp_i.gnt)
-          state_d = CE_SUBMIT_CMD24_RSP;
+          state_d = CE_SUBMIT_CMD25_RSP;
       end
 
-      CE_SUBMIT_CMD24_RSP: begin
+      CE_SUBMIT_CMD25_RSP: begin
         if (copy_write_rsp_i.rvalid) begin
           poll_timeout_cnt_d = '0;
           state_d            = CE_WAIT_CMD_COMPLETE;
@@ -561,11 +669,12 @@ module adc_acquisition_sdcard_controller
         poll_timeout_cnt_d = poll_timeout_cnt_q + 1'b1;
         if (copy_write_rsp_i.rvalid) begin
           if (copy_write_rsp_i.r.rdata[4]) begin // BWR set
-            rd_idx_d     = '0;
-            wr_idx_d     = '0;
-            pipe_valid_d = 1'b0;
-            rd_pending_d = 1'b0;
-            state_d      = CE_COPY_WORD;
+            rd_idx_d           = '0;
+            wr_idx_d           = '0;
+            pipe_valid_d       = 1'b0;
+            rd_pending_d       = 1'b0;
+            poll_timeout_cnt_d = '0; // CE_COPY_WORD reuses this as its stall window
+            state_d            = CE_COPY_WORD;
           end else if (poll_timeout_cnt_q >= POLL_TIMEOUT) begin
             state_d = CE_OVERFLOW;
           end else begin
@@ -575,7 +684,8 @@ module adc_acquisition_sdcard_controller
       end
 
       // --------------------------------------------------------------------
-      // Copy, one word at a time.
+      // Copy the whole frame, one word at a time, straight through every
+      // block boundary in the session -- there is no per-block handshake.
       //
       // READ side (copy_read -> SRAM): issue next read only once the pipe
       //   slot is fully free -- no read outstanding (rd_pending_q) and no
@@ -586,11 +696,24 @@ module adc_acquisition_sdcard_controller
       //   read's result.
       //
       // WRITE side (copy_write -> SDHCI DATA): drains the pipeline register.
-      //   SDHCI's grant is not guaranteed same-cycle and can be backpressured
-      //   for an arbitrary number of cycles; the read side waiting on
-      //   pipe_valid_q/rd_pending_q is what makes the copy correct under
-      //   that backpressure instead of silently overwriting unwritten data.
+      //   SDHCI withholds the grant whenever its 1 KiB DAT buffer is full
+      //   (dat_buffer.sv's buffer_data_port_write_ready_o -> reg_ready ->
+      //   gnt), which streaming a 2 KiB frame through it makes routine, not
+      //   exceptional. The read side waiting on pipe_valid_q/rd_pending_q is
+      //   what makes the copy correct under that backpressure instead of
+      //   silently overwriting unwritten data.
+      //
+      // Stall timeout: poll_timeout_cnt_q counts cycles since the last word
+      // was accepted and is cleared on every accepted word, so it measures a
+      // continuous stall rather than the copy's total duration (which
+      // legitimately exceeds POLL_TIMEOUT for a large frame on a slow card).
+      // Without it a mis-sized session hangs the FSM forever rather than
+      // reporting: once SDHCI has taken BLOCK_COUNT blocks,
+      // accepts_data_port_chunk (dat_buffer.sv) goes low permanently and no
+      // further word is ever granted.
       CE_COPY_WORD: begin
+        poll_timeout_cnt_d = poll_timeout_cnt_q + 1'b1;
+
         // --- READ side ---
         if (rd_idx_q < frame_words_q && !pipe_valid_q && !rd_pending_q) begin
           copy_read_req_o = obi_read(sram_copy_base + {rd_idx_q, 2'b00});
@@ -609,18 +732,23 @@ module adc_acquisition_sdcard_controller
         if (pipe_valid_q) begin
           copy_write_req_o = obi_write(SDHCI_DATA, pipe_data_q, 4'hf);
           if (copy_write_rsp_i.gnt) begin
-            pipe_valid_d = 1'b0;
-            wr_idx_d     = wr_idx_q + 1;
+            pipe_valid_d       = 1'b0;
+            wr_idx_d           = wr_idx_q + 1;
+            poll_timeout_cnt_d = '0; // progress: restart the stall window
           end
         end
 
-        if (wr_idx_q == frame_words_q)
-          state_d = CE_ACK_BUFFERED;
+        if (wr_idx_q == frame_words_q) begin
+          poll_timeout_cnt_d = '0;
+          state_d            = CE_ACK_BUFFERED;
+        end else if (poll_timeout_cnt_q >= POLL_TIMEOUT) begin
+          state_d = CE_OVERFLOW;
+        end
       end
 
       // --------------------------------------------------------------------
-      // W1C-clear BUFFER_WRITE_READY so SDHCI knows this block's words are
-      // all in its buffer.
+      // W1C-clear BUFFER_WRITE_READY now that every word of the frame has
+      // been handed to SDHCI.
       CE_ACK_BUFFERED: begin
         copy_write_req_o = obi_write(SDHCI_NINTR, {16'h0, BWR_BIT}, 4'h3);
         if (copy_write_rsp_i.gnt)
@@ -635,10 +763,15 @@ module adc_acquisition_sdcard_controller
       end
 
       // --------------------------------------------------------------------
-      // Single condition, not a race: BUFFER_WRITE_READY structurally
-      // cannot re-assert for a single-block command (SDHCI's internal
-      // block counter is pinned to 1 -- see header comment), so
-      // TRANSFER_COMPLETE is the only outcome that ever arrives here.
+      // One condition, and it fires exactly once per session. With
+      // block-count-enable set, dat_wrap.sv's write FSM loops
+      // DONE_WRITING_BLOCK -> WAIT_FOR_WRITE_BUFFER for each block and only
+      // reaches DONE_WRITING when transmitted_block_counter hits 1; that is
+      // what returns dat_state to READY, drops command_inhibit_dat, and sets
+      // TRANSFER_COMPLETE (sdhci_reg_logic.sv). BUFFER_WRITE_READY does
+      // re-assert per block in a multi-block session, but nothing here reads
+      // it -- the old design's BWR-vs-TRANSFER_COMPLETE race does not exist
+      // because per-block events are not used for anything.
       CE_WAIT_TRANSFER_COMPLETE: begin
         copy_write_req_o   = obi_read(SDHCI_NINTR);
         poll_timeout_cnt_d = poll_timeout_cnt_q + 1'b1;
@@ -668,13 +801,72 @@ module adc_acquisition_sdcard_controller
       CE_ACK_TRANSFER_COMPLETE_RSP: begin
         if (copy_write_rsp_i.rvalid) begin
           poll_timeout_cnt_d = '0;
+          state_d            = CE_WAIT_AUTOCMD12_COMPLETE;
+        end
+      end
+
+      // --------------------------------------------------------------------
+      // AUTO_CMD12 closes the session, and it is not optional: sdModel.v
+      // clears its mult_write flag only in the CMD12 handler, and a real card
+      // likewise stays in RCV until stopped. dat_wrap.sv raises
+      // request_cmd12_o on the *same* WRITE->READY edge that produced
+      // TRANSFER_COMPLETE, and autocmd_wrap.sv then issues CMD12 with an R1b
+      // (busy-checked) response, so command_inhibit_dat goes back up shortly
+      // after it went down.
+      //
+      // That "shortly after" is why this wait exists rather than dropping
+      // straight into CE_WAIT_CARD_READY: CMD12 is issued on the SD clock,
+      // which is divided down from the system clock, while this FSM gets from
+      // TRANSFER_COMPLETE to its next PRESENT_STATE read in a handful of OBI
+      // round trips. Polling PRESENT_STATE directly could therefore sample
+      // the gap *before* CMD12 raises command_inhibit again, read "card
+      // idle", and release the bank with the session still open.
+      //
+      // COMMAND_COMPLETE is unambiguous here: CMD25's own was consumed and
+      // W1C-cleared back at CE_ACK_CMD_COMPLETE, so a set bit now can only
+      // belong to the AUTO_CMD12. ERROR_INTERRUPT covers an AUTO_CMD12
+      // failure too -- it sets EINTR_STATUS bit 8 (auto_cmd12_error), which
+      // ORs into ERROR_INTERRUPT, so no separate read of
+      // AUTO_CMD12_ERROR_STATUS (0x3c) is needed to notice it.
+      CE_WAIT_AUTOCMD12_COMPLETE: begin
+        copy_write_req_o   = obi_read(SDHCI_NINTR);
+        poll_timeout_cnt_d = poll_timeout_cnt_q + 1'b1;
+        if (copy_write_rsp_i.gnt)
+          state_d = CE_WAIT_AUTOCMD12_COMPLETE_RSP;
+      end
+
+      CE_WAIT_AUTOCMD12_COMPLETE_RSP: begin
+        poll_timeout_cnt_d = poll_timeout_cnt_q + 1'b1;
+        if (copy_write_rsp_i.rvalid) begin
+          if (copy_write_rsp_i.r.rdata[15]) begin // ERROR_INTERRUPT
+            state_d = CE_OVERFLOW;
+          end else if (copy_write_rsp_i.r.rdata[0]) begin // COMMAND_COMPLETE
+            state_d = CE_ACK_AUTOCMD12_COMPLETE;
+          end else if (poll_timeout_cnt_q >= POLL_TIMEOUT) begin
+            state_d = CE_OVERFLOW;
+          end else begin
+            state_d = CE_WAIT_AUTOCMD12_COMPLETE; // retry
+          end
+        end
+      end
+
+      CE_ACK_AUTOCMD12_COMPLETE: begin
+        copy_write_req_o = obi_write(SDHCI_NINTR, {16'h0, CMD_COMPLETE_BIT}, 4'h3);
+        if (copy_write_rsp_i.gnt)
+          state_d = CE_ACK_AUTOCMD12_COMPLETE_RSP;
+      end
+
+      CE_ACK_AUTOCMD12_COMPLETE_RSP: begin
+        if (copy_write_rsp_i.rvalid) begin
+          poll_timeout_cnt_d = '0;
           state_d            = CE_WAIT_CARD_READY;
         end
       end
 
       // --------------------------------------------------------------------
       // TRANSFER_COMPLETE is a *host controller* event, not a *card* event.
-      // It means SDHCI's own write FSM finished framing this block on the
+      // It means SDHCI's own write FSM finished framing the session's last
+      // block on the
       // bus (data, CRC, CRC-status token); the card only starts its
       // internal program-to-flash cycle at that point, and signals it by
       // holding DAT0 low for the whole duration (SD spec busy signalling).
@@ -713,12 +905,16 @@ module adc_acquisition_sdcard_controller
       // -- no hang. CMD_INHIBIT_CMD/DAT are folded into the same check so a
       // single read covers both "host controller idle" and "card idle".
       //
+      // By this point AUTO_CMD12's own R1b busy has already been waited out
+      // (CE_WAIT_AUTOCMD12_COMPLETE), so what remains here is the card
+      // finishing its last program cycle and returning PRG -> TRAN.
+      //
       // Note on POLL_TIMEOUT: this is the one wait whose natural duration is
       // set by flash programming rather than by bus turnaround. 500k cycles
       // is ~5 ms at 100 MHz, comfortable against this testbench model (~500
       // cycles) but short of the ~250 ms a real card may legitimately take
-      // for a single-block write -- raise POLL_TIMEOUT before running
-      // against real silicon.
+      // to finish programming -- raise POLL_TIMEOUT before running against
+      // real silicon.
       CE_WAIT_CARD_READY: begin
         copy_write_req_o   = obi_read(SDHCI_PRESENT_STATE);
         poll_timeout_cnt_d = poll_timeout_cnt_q + 1'b1;
@@ -749,7 +945,9 @@ module adc_acquisition_sdcard_controller
       // --------------------------------------------------------------------
       // Every frame releases its bank and advances the address the same
       // way; only the capture's actual last frame (is_last_frame_q,
-      // latched at job start) also asserts SDCARD_DONE.
+      // latched at job start) also asserts SDCARD_DONE. The advance is one
+      // whole session's worth (SDCARD_BLOCK_COUNT blocks / the frame's byte
+      // count), not one block -- see block_addr_advance_o.
       CE_DONE: begin
         block_addr_incr_o = 1'b1;
         if (copying_f0_q) f0_full_clear_o = 1'b1;

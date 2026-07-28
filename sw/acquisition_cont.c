@@ -30,12 +30,16 @@
 
 #define NUM_FRAMES  6u   // how many frames to capture before stopping
 
-// ADC SRAM frame layout (croc_pkg.sv: Bank2=F0 @ 0x1000_1000, Bank3=F1 @ 0x1000_1800)
-#define F0_START_ADDR_BYTE  0x10001000u
-#define N_WORDS              128u  // 256 samples per frame
-#define F0_END_ADDR_BYTE    (F0_START_ADDR_BYTE + (N_WORDS - 1u) * 4u)
-#define F1_START_ADDR_BYTE  0x10001800u
-#define F1_END_ADDR_BYTE    (F1_START_ADDR_BYTE + (N_WORDS - 1u) * 4u)
+// ADC SRAM frame layout: one full bank per frame, so both frames together use
+// the entire 4 KiB the SoC dedicates to ADC capture -- 512 words = 2 KiB =
+// 1024 samples each (see ADC_ACQ_BANK_WORDS in adc_acquisition.h).
+#define F0_START_ADDR_BYTE  ADC_ACQ_F0_BASE
+#define N_WORDS             ADC_ACQ_BANK_WORDS
+#define F0_END_ADDR_BYTE    ADC_ACQ_FRAME_END(F0_START_ADDR_BYTE, N_WORDS)
+#define F1_START_ADDR_BYTE  ADC_ACQ_F1_BASE
+#define F1_END_ADDR_BYTE    ADC_ACQ_FRAME_END(F1_START_ADDR_BYTE, N_WORDS)
+
+ADC_ACQ_ASSERT_FRAME_FITS(N_WORDS);
 
 static inline uint32_t lo14(uint32_t w) { return w & 0x3FFFu; }
 static inline uint32_t hi14(uint32_t w) { return (w >> 16) & 0x3FFFu; }

@@ -10,12 +10,12 @@
     <dt>Base Offset:</dt><dd class="address">0x20</dd>
     <dt>Size:</dt><dd class="address">0x4</dd>
     
-    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L142" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
+    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L144" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
     
 </dl>
 <h2>Description</h2>
 <div id="_Content.desc">
-<p>Current CMD24 argument for the HW copy engine in ACQ_SDCARD mode. Software sets the starting value; hardware advances it after each block by the amount SDCARD_ADDR_MODE selects (see there). Units (block number vs. byte address) are also selected by SDCARD_ADDR_MODE.</p>
+<p>Current CMD25 argument for the HW copy engine in ACQ_SDCARD mode. Software sets the starting value; hardware advances it after each completed session by the amount SDCARD_ADDR_MODE selects (see there). Units (block number vs. byte address) are also selected by SDCARD_ADDR_MODE. Note the card itself advances internally across the blocks within one CMD25 session -- this register is only written once per session, at its start.</p>
 </div>
 
 <h2>Contents</h2>
@@ -63,6 +63,6 @@
     <a class="headerlink" href="#BLOCK_ADDR.desc" title="Permalink to this headline"></a>
 </h3>
 <div id="_Content.BLOCK_ADDR.desc">
-<p>CMD24 argument -- a block number or a byte address, per SDCARD_ADDR_MODE</p>
+<p>CMD25 argument -- a block number or a byte address, per SDCARD_ADDR_MODE</p>
 </div>
 </div>

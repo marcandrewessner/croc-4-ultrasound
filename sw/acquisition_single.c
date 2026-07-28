@@ -12,7 +12,9 @@
 //      that part.
 //   2. Wait for the completion interrupt (interrupt_frame_full_o, wired to
 //      ADC_ACQ_INTERRUPT) instead of polling STATUS -- this mode supports
-//      both, this example showcases the interrupt path.
+//      both, this example showcases the interrupt path. The line is level-
+//      sensitive with no hardware ack, so the ISR clears the STATUS flags
+//      that raised it; see croc_interrupt_handler below.
 //   3. Dump the captured words: each 32-bit word packs two consecutive
 //      14-bit ADC samples, {2'b00, sample[2i+1], 2'b00, sample[2i]}.
 //   4. Re-arm once more to show the peripheral isn't one-shot -- CONF.MODE
@@ -25,26 +27,54 @@
 #include "config.h"
 #include "adc_acquisition.h"
 
-#define F0_START_ADDR_BYTE  0x10001000u
-#define N_WORDS              64u   // 128 samples
-#define F0_END_ADDR_BYTE    (F0_START_ADDR_BYTE + (N_WORDS - 1u) * 4u)
+// Fill the whole of Bank2: 512 words = 2 KiB = 1024 ADC samples, the largest
+// frame a single bank can hold (see ADC_ACQ_BANK_WORDS in adc_acquisition.h
+// for where that number comes from).
+#define F0_START_ADDR_BYTE  ADC_ACQ_F0_BASE
+#define N_WORDS             ADC_ACQ_BANK_WORDS
+#define F0_END_ADDR_BYTE    ADC_ACQ_FRAME_END(F0_START_ADDR_BYTE, N_WORDS)
+
+ADC_ACQ_ASSERT_FRAME_FITS(N_WORDS);
 
 static inline uint32_t lo14(uint32_t w) { return w & 0x3FFFu; }
 static inline uint32_t hi14(uint32_t w) { return (w >> 16) & 0x3FFFu; }
 
 static volatile int frame_ready;
+static volatile uint32_t frame_status;   // STATUS snapshot the ISR acted on
 
 void croc_interrupt_handler(uint32_t cause) {
-    if (cause == ADC_ACQ_INTERRUPT && (ADC_ACQ->STATUS & ADC_ACQ_STATUS_F0_FULL)) {
-        frame_ready = 1;
-        // Leave F0_FULL set for main() to consume; clearing it here would
-        // race main()'s own read of STATUS below.
-    }
+    if (cause != ADC_ACQ_INTERRUPT) return;
+
+    uint32_t status = ADC_ACQ->STATUS;
+    frame_status = status;
+    if (status & ADC_ACQ_STATUS_F0_FULL) frame_ready = 1;
+
+    // ADC_ACQ_INTERRUPT is level-sensitive: interrupt_frame_full_o is a plain
+    // OR of every STATUS flag, held until software clears them, and CVE2 wires
+    // it straight into mip.irq_fast with no edge detect or hardware ack. So
+    // the ISR *must* deassert it before returning -- leave a flag set and mret
+    // walks straight back into the trap handler, so main() retires only one
+    // instruction per round trip. That looks exactly like "the interrupt never
+    // fired". test_interrupts.c does the same thing via obi_timer_clear_expired().
+    //
+    // One store clears everything: CLEAR_F0_FULL/CLEAR_F1_FULL have their own
+    // bits and CLEAR_STATUS covers ADC_OVERFLOW plus the two SD-card flags.
+    // All CNTRL bits are singlepulse and RESET_WRITE_HEAD stays 0, so the
+    // write head is untouched.
+    //
+    // Clearing from the ISR is race-free in SINGLE_ACQ_F0 specifically:
+    // hardware reverted CONF.MODE to IDLE in the same cycle it raised F0_FULL
+    // (adc_acquisition_top.sv), so nothing can re-raise a flag between the
+    // read above and this write, and nothing writes F0 while main() dumps it.
+    ADC_ACQ->CNTRL = (1u << ADC_ACQ_CTRL_CLR_F0_FULL_BIT)
+                   | (1u << ADC_ACQ_CTRL_CLR_F1_FULL_BIT)
+                   | ADC_ACQ_CTRL_CLEAR_STATUS;
 }
 
 // Arms F0 and blocks (via IRQ, not polling) until it's full.
 static void run_acquisition(void) {
-    frame_ready = 0;
+    frame_ready  = 0;
+    frame_status = 0;
 
     ADC_ACQ->F0_START_ADDR = F0_START_ADDR_BYTE;
     ADC_ACQ->F0_END_ADDR   = F0_END_ADDR_BYTE;
@@ -74,13 +104,16 @@ int main(void) {
     run_acquisition();
     printf("F0 full\n");
     dump_frame();
-    ADC_ACQ->CNTRL = (1u << ADC_ACQ_CTRL_CLR_F0_FULL_BIT);
 
     // --- run 2: same peripheral, re-armed -------------------------------
     run_acquisition();
     printf("F0 full (re-armed)\n");
     dump_frame();
-    ADC_ACQ->CNTRL = (1u << ADC_ACQ_CTRL_CLR_F0_FULL_BIT);
+
+    // The ISR clears ADC_OVERFLOW along with everything else, so the only
+    // place it is still visible is the STATUS snapshot it took.
+    if (frame_status & ADC_ACQ_STATUS_ADC_OVERFLOW)
+        printf("WARN: ADC_OVERFLOW (CDC FIFO full, samples dropped)\n");
 
     printf("acquisition_single done\n");
     uart_write_flush();

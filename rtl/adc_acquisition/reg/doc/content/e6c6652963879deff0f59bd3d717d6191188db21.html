@@ -10,7 +10,7 @@
     <dt>Base Offset:</dt><dd class="address">0x4</dd>
     <dt>Size:</dt><dd class="address">0x4</dd>
     
-    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L58" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
+    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L60" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
     
 </dl>
 <h2>Description</h2>
@@ -159,7 +159,7 @@
     <a class="headerlink" href="#SDCARD_DONE.desc" title="Permalink to this headline"></a>
 </h3>
 <div id="_Content.SDCARD_DONE.desc">
-<p>HW copy engine finished transferring a frame into the SDHCI buffer. Clear with CLEAR_STATUS.</p>
+<p>HW copy engine finished the capture's last frame: its CMD25 session completed, AUTO_CMD12 closed it and the card released DAT0, so every block is physically committed. Clear with CLEAR_STATUS.</p>
 </div>
 
 <h3 id="ADC_OVERFLOW.desc">ADC_OVERFLOW - adc_overflow
