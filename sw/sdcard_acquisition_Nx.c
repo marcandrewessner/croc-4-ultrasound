@@ -48,7 +48,7 @@
 //                       target_frame_full/SDCARD_OVERFLOW if the card
 //                       can't keep up with T_fill
 // ---------------------------------------------------------------------------
-#define NUM_FRAMES  4u
+#define NUM_FRAMES  4
 
 #define TIMEOUT  250000U   // CLINT ticks (~7.5 s at 32 kHz) -- bounds the whole capture
 
@@ -80,25 +80,18 @@ ADC_ACQ_ASSERT_FRAME_FITS(N_WORDS);
 _Static_assert(BLOCKS_PER_FRAME * SD_BLOCK_BYTES == FRAME_BYTES,
                "frame must be a whole number of SD blocks");
 
-// Starting SDCARD_BLOCK_ADDR value and its units -- 1 = block addressing
-// (SDHC/SDXC-style, argument is a raw block number, advances by
-// SDCARD_BLOCK_COUNT per session), 0 = byte addressing
+// Starting SDCARD_BLOCK_ADDR value. Its *units* are not a constant here:
+// 1 = block addressing (SDHC/SDXC-style, argument is a raw block number,
+// advances by SDCARD_BLOCK_COUNT per session), 0 = byte addressing
 // (standard-capacity-style, argument is a byte address, advances by the
 // frame's byte count per session). Only the session's *starting* address is
 // ever sent: within a CMD25 session the card advances internally per block.
-// Most cards in use today are SDHC/SDXC, so 1 is what real hardware wants.
 //
-// This is 0 because of the simulation card model, not because of the
-// design: rtl/test/sdcard/model/sdModel.v advertises CCS=1 in its OCR
-// (32'h40ff8000, i.e. "I am high capacity, address me in blocks") but its
-// CMD25 handler then does `BlockAddr = inCmd[39:8]` and indexes FLASHmem
-// with it directly -- a raw *byte* address, and its per-block advance is
-// likewise `BlockAddr += 512`. It even checks
-// `if (BlockAddr % 512 != 0) $display("**Block Misalign Error")`, which is
-// only meaningful for byte addressing. So against this model, block N must
-// be addressed as N*512. Set this back to 1 for a real SDHC/SDXC card.
+// Which one applies is the card's answer, read out of the OCR's CCS bit
+// during init -- see sdh_card_is_block_addressed(), which also documents why
+// the simulation model needs an override (it advertises CCS=1 and then
+// behaves like a standard-capacity card).
 #define SDCARD_START_ADDR    0u
-#define SDCARD_ADDR_IS_BLOCKS 0u
 
 int main(void) {
     uart_init();
@@ -120,7 +113,8 @@ int main(void) {
     ADC_ACQ->SDCARD_BLOCK_SIZE  = SD_BLOCK_BYTES;
     ADC_ACQ->SDCARD_BLOCK_COUNT = BLOCKS_PER_FRAME;
     ADC_ACQ->SDCARD_BLOCK_ADDR  = SDCARD_START_ADDR;
-    ADC_ACQ->SDCARD_ADDR_MODE   = SDCARD_ADDR_IS_BLOCKS;
+    const uint32_t addr_is_blocks = sdh_card_is_block_addressed();
+    ADC_ACQ->SDCARD_ADDR_MODE   = addr_is_blocks;
     ADC_ACQ->SDCARD_FRAME_COUNT = NUM_FRAMES;
     ADC_ACQ->F0_START_ADDR      = F0_START_ADDR_BYTE;
     ADC_ACQ->F0_END_ADDR        = F0_END_ADDR_BYTE;
@@ -148,7 +142,7 @@ int main(void) {
     // worth in whichever unit SDCARD_ADDR_MODE selects -- so recovering the
     // frame count means dividing by that same per-frame amount.
     uint32_t frames_done = ADC_ACQ->SDCARD_BLOCK_ADDR - SDCARD_START_ADDR;
-    frames_done /= (SDCARD_ADDR_IS_BLOCKS ? BLOCKS_PER_FRAME : FRAME_BYTES);
+    frames_done /= (addr_is_blocks ? BLOCKS_PER_FRAME : FRAME_BYTES);
 
     if (timed_out)
         printf("FAIL: capture timeout after %x/%x frames\n", frames_done, NUM_FRAMES);

@@ -61,6 +61,13 @@ module autocmd_wrap (
   logic autocmd12_queued_q, autocmd12_queued_d;
   `FFARNC(autocmd12_queued_q, autocmd12_queued_d, clear_i, '0, clk_i, rst_ni);
 
+  // "The command currently executing is the auto CMD12". Deliberately sticky:
+  // it is only reassigned at command_started, so between the end of an auto
+  // CMD12 and the next command it still reads 1 with nothing running. That is
+  // harmless for its uses below -- they all qualify it with an event that can
+  // only occur during execution (cmd_result_valid, timeout_error,
+  // cmd_inhibit_logic) -- but it must never be used to decide which command is
+  // *starting*; see starting_autocmd12.
   logic running_autocmd12_q, running_autocmd12_d;
   `FFARNC(running_autocmd12_q, running_autocmd12_d, clear_i, '0, clk_i, rst_ni);
 
@@ -94,18 +101,37 @@ module autocmd_wrap (
            command_started && !autocmd12_queued_q && cmd_data_present_o,
            clear_i, '0, clk_i, rst_ni);
 
-  // Use running_autocmd12_q (not autocmd12_queued_q) so the mux output
-  // stays stable throughout command execution, allowing cmd_logic to read
-  // these directly without re-latching them.
-  logic is_autocmd12;
-  assign is_autocmd12 = autocmd12_queued_q | running_autocmd12_q;
+  // The command being *started* is the auto CMD12 iff one is queued -- that is
+  // exactly the arbitration `request_commands` below applies at
+  // command_started (autocmd12 has priority over a queued driver command).
+  //
+  // running_autocmd12_q must NOT be part of this: it means "the command
+  // currently executing is the auto CMD12", and it is only ever reassigned at
+  // the *next* command_started, so it stays set for the whole idle gap after
+  // the auto CMD12 finished. Including it here made that stale 1 still be
+  // read in the very cycle the next driver command was accepted, muxing that
+  // command into a second CMD12 (index 12, argument 0) on the bus --
+  // observed on croc.fst: after a CMD25 session's AUTO_CMD12 at 11041.24 us,
+  // the driver's next CMD25 at 11958.15 us went out as CMD12/arg 0, the card
+  // answered R1 index 12 and stayed in TRAN, and the data phase (which
+  // data_present_select still enabled) streamed a block into a card that had
+  // never been told to receive it.
+  //
+  // All three current_* signals are sampled only at command_started -- the
+  // accepted_*_q registers latch them there, and cmd_needs_busy_o is read by
+  // dat_wrap.sv only under cmd_started_i -- so they do not need to stay
+  // stable during execution. cmd_logic reads the latched accepted_*_q, not
+  // these. cmd_data_present_o and active_transfer_direction_q above already
+  // key off autocmd12_queued_q for the same reason.
+  logic starting_autocmd12;
+  assign starting_autocmd12 = autocmd12_queued_q;
 
   sdhci_pkg::cmd_t current_cmd;
-  assign current_cmd = is_autocmd12 ? 6'd12 :
+  assign current_cmd = starting_autocmd12 ? 6'd12 :
                        reg2hw.command.command_index.q;
 
   sdhci_pkg::cmd_arg_t current_arg;
-  assign current_arg = is_autocmd12 ? '0 : reg2hw.argument.q;
+  assign current_arg = starting_autocmd12 ? '0 : reg2hw.argument.q;
 
   sdhci_pkg::response_type_e current_rsp_type;
 
@@ -113,7 +139,7 @@ module autocmd_wrap (
     current_rsp_type = sdhci_pkg::response_type_e'(reg2hw.command.response_type_select.q);
 
     // according to electrical spec 7.8.4, CMD12 is R1 on reads and R1b on writes
-    if (is_autocmd12) begin
+    if (starting_autocmd12) begin
       if (active_transfer_direction_q == 1'b0) begin
         // write -> R1b
         current_rsp_type = sdhci_pkg::RESPONSE_LENGTH_48_CHECK_BUSY;

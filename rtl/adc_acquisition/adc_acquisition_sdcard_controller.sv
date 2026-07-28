@@ -72,18 +72,23 @@
 //      state samples dat0_i exactly once, two sd_clk cycles after
 //      END_BIT (the hardcoded BUS_SWITCH wait), to check whether the
 //      card has already pulled DAT0 low to start its CRC status token.
-//      Against this repo's sdModel.v, DAT0 is not yet low at that exact
-//      sample, so data_timeout_d latches -- confirmed via waveform
-//      (croc.fst): dat_tx_state_q enters STATUS_START_BIT for exactly
-//      one cycle with dat0_i=1, data_timeout_q latches the next cycle,
-//      and the block still completes correctly two cycles later
-//      (write_done and TRANSFER_COMPLETE both fire on schedule,
-//      unaffected). The flag is purely a passenger: dat_write.sv's own
-//      FSM does not stall or branch away from DONE because of it, it
-//      only causes dat_wrap.sv's outer write_state_q to detour through
-//      TIMEOUT_WRITING (instead of DONE_WRITING_BLOCK) on its way to
-//      DONE_WRITING, which is where EINTR_STATUS.data_timeout_error
-//      actually gets set. Like TRANSFER_COMPLETE, nothing clears it
+//      Against this repo's sdModel.v, DAT0 was not yet low at that exact
+//      sample, so data_timeout_d latched on every block.
+//
+//      That sampling race is FIXED at its source now (dat_write.sv's
+//      STATUS_START_BIT searches for the start bit over a window instead
+//      of sampling once) -- it had to be, because it is not the harmless
+//      passenger the single-block design could treat it as. It made
+//      dat_wrap.sv's write_state_q detour through TIMEOUT_WRITING instead
+//      of DONE_WRITING_BLOCK, and DONE_WRITING_BLOCK is the only state
+//      that loops back for the next block of a CMD25 session -- so every
+//      multi-block session was silently truncated to one block
+//      (DATAPATH.md §0a). This step's clearing of the resulting
+//      EINTR_STATUS bit is kept anyway: it costs nothing, and the flag can
+//      still be set legitimately by a genuinely slow card.
+//
+//      EINTR_STATUS.data_timeout_error is set where write_state_q reaches
+//      TIMEOUT_WRITING. Like TRANSFER_COMPLETE, nothing clears it
 //      afterward, so without this step it survives into the next job:
 //      confirmed via waveform at N=2, where job 1's leftover
 //      data_timeout_error (and the ERROR_INTERRUPT bit it drives) was
@@ -151,18 +156,7 @@
 //      command_inhibit_dat, which is what sets the bit). There is no
 //      per-block event to race against here because none is used.
 //  11. CE_ACK_TRANSFER_COMPLETE: W1C-clear TRANSFER_COMPLETE.
-//  12. CE_WAIT_AUTOCMD12_COMPLETE: poll for a *fresh* COMMAND_COMPLETE,
-//      which belongs to the AUTO_CMD12 that dat_wrap.sv requested on the
-//      same WRITE->READY edge that produced TRANSFER_COMPLETE (its own
-//      CMD25 COMMAND_COMPLETE was already consumed at step 6, so there is
-//      no ambiguity). Necessary because AUTO_CMD12 is R1b: its busy
-//      period re-raises command_inhibit_dat shortly *after*
-//      TRANSFER_COMPLETE, so polling PRESENT_STATE directly could sample
-//      the gap in between and read "idle" while CMD12 is still pending.
-//      ERROR_INTERRUPT is checked here too -- an AUTO_CMD12 failure sets
-//      EINTR_STATUS bit 8, which ORs into it.
-//  13. CE_ACK_AUTOCMD12_COMPLETE: W1C-clear COMMAND_COMPLETE again.
-//  14. CE_WAIT_CARD_READY: poll PRESENT_STATE until the *card* says it is
+//  12. CE_WAIT_CARD_READY: poll PRESENT_STATE until the *card* says it is
 //      done, not just the host controller: CMD_INHIBIT_CMD/DAT clear AND
 //      DAT0's line level (bit 20) back high. TRANSFER_COMPLETE only means
 //      SDHCI's own write FSM finished framing the block on the bus; the
@@ -173,7 +167,16 @@
 //      state body for the full trace. This wait is inside busy_o and
 //      before CE_DONE on purpose: SDCARD_DONE and the Fx_FULL release must
 //      not fire until the block is physically committed.
-//  15. CE_DONE: release the bank (Fx_FULL clear), advance
+//      This also covers AUTO_CMD12 -- there is deliberately no separate
+//      state for it, because SDHCI never reports COMMAND_COMPLETE for an
+//      auto command. See the state body for the masking that causes that
+//      and for why the pass condition is required on two consecutive
+//      polls rather than one.
+//  13. CE_CHECK_ERRORS: one NINTR_STATUS read for ERROR_INTERRUPT before
+//      committing. With no COMMAND_COMPLETE for AUTO_CMD12 there is
+//      nowhere else an AUTO_CMD12 failure (EINTR_STATUS bit 8) could be
+//      noticed; it also catches late data CRC/end-bit errors.
+//  14. CE_DONE: release the bank (Fx_FULL clear), advance
 //      SDCARD_BLOCK_ADDR by block_addr_advance_o (+SDCARD_BLOCK_COUNT for
 //      block addressing, +this frame's byte count for byte addressing --
 //      see SDCARD_ADDR_MODE; note the card advances internally *within*
@@ -183,7 +186,8 @@
 //      SDCARD_DONE. Every other frame releases its bank and advances the
 //      address exactly the same way, just without SDCARD_DONE.
 //
-// Error handling: command-level errors (steps 5 and 12) fall through to
+// Error handling: command-level errors (step 5) and any error latched
+// during the session (step 13) fall through to
 // CE_OVERFLOW, as does a copy that stalls longer than POLL_TIMEOUT on the
 // SDHCI data port (step 8). Data/CRC errors on the blocks themselves are
 // still not decoded. SDHCI EINTR_STATUS remains visible to software for
@@ -282,11 +286,27 @@ module adc_acquisition_sdcard_controller
 
   // Upper bound (in cycles) on how long any single poll in this FSM retries
   // before giving up and declaring SDCARD_OVERFLOW -- shared by every
-  // CE_WAIT_* state, none of which are ever concurrent. The card needs real
-  // time to become idle, accept a command, ready its buffer, or finish
-  // programming flash, so every wait depends on this actually waiting
-  // instead of checking once and giving up immediately.
-  localparam int unsigned POLL_TIMEOUT = 20'd500_000;
+  // CE_WAIT_* state and by CE_COPY_WORD's stall window, none of which are ever
+  // concurrent. The card needs real time to become idle, accept a command,
+  // ready its buffer, or finish programming flash, so every wait depends on
+  // this actually waiting instead of checking once and giving up immediately.
+  //
+  // Sized for a *real* card, not the simulation model: the SD spec permits up
+  // to 250 ms for a write, so 25M cycles at 100 MHz. The model needs ~5 us,
+  // so this is enormously oversized there -- which costs nothing, since every
+  // wait exits on its real condition and only a genuine fault ever runs the
+  // counter out.
+  //
+  // Two of the waits bounded by this genuinely need the full 250 ms, and both
+  // are new with the CMD25 session, which is why the previous 500k (5 ms) is
+  // no longer adequate:
+  //   - CE_WAIT_TRANSFER_COMPLETE now spans every block of the session plus
+  //     all the card's inter-block programming, not one block.
+  //   - CE_COPY_WORD stalls on the OBI grant for as long as the card stays
+  //     busy between blocks, because the SDHCI buffer cannot drain meanwhile.
+  //     At 5 ms a perfectly healthy transfer to a slow card would be aborted
+  //     as an overflow.
+  localparam int unsigned POLL_TIMEOUT = 25'd25_000_000;
 
   // -------------------------------------------------------------------------
   // FSM
@@ -307,9 +327,8 @@ module adc_acquisition_sdcard_controller
     CE_ACK_BUFFERED, CE_ACK_BUFFERED_RSP,                // W1C-clear BWR
     CE_WAIT_TRANSFER_COMPLETE, CE_WAIT_TRANSFER_COMPLETE_RSP, // one per session
     CE_ACK_TRANSFER_COMPLETE, CE_ACK_TRANSFER_COMPLETE_RSP,
-    CE_WAIT_AUTOCMD12_COMPLETE, CE_WAIT_AUTOCMD12_COMPLETE_RSP, // AUTO_CMD12 (R1b) issued+responded?
-    CE_ACK_AUTOCMD12_COMPLETE, CE_ACK_AUTOCMD12_COMPLETE_RSP,
-    CE_WAIT_CARD_READY, CE_WAIT_CARD_READY_RSP,          // card off DAT0-busy (PRG -> TRAN)?
+    CE_WAIT_CARD_READY, CE_WAIT_CARD_READY_RSP,          // card idle, incl. AUTO_CMD12?
+    CE_CHECK_ERRORS, CE_CHECK_ERRORS_RSP,                // any error latched during the session?
     CE_DONE,                                             // release bank, advance address, maybe SDCARD_DONE
     CE_OVERFLOW                                          // timeout or command error
   } ce_state_e;
@@ -355,12 +374,19 @@ module adc_acquisition_sdcard_controller
 
   // Cycles spent in the current poll. Reset on entry to each CE_WAIT_*
   // state (CE_WAIT_CMD_INHIBIT, CE_WAIT_CMD_COMPLETE, CE_WAIT_BUFFER_READY,
-  // CE_WAIT_TRANSFER_COMPLETE, CE_WAIT_AUTOCMD12_COMPLETE,
+  // CE_WAIT_TRANSFER_COMPLETE,
   // CE_WAIT_CARD_READY); checked against POLL_TIMEOUT in each corresponding
   // *_RSP state. Also reused by CE_COPY_WORD as its stall counter -- see
   // there. One counter suffices since these waits are never concurrent.
-  logic [19:0] poll_timeout_cnt_d, poll_timeout_cnt_q;
+  // 25 bits: POLL_TIMEOUT is 25M, past what the previous 20 bits (1.05M) held.
+  logic [24:0] poll_timeout_cnt_d, poll_timeout_cnt_q;
   `FF(poll_timeout_cnt_q, poll_timeout_cnt_d, '0, clk_i, rst_ni)
+
+  // CE_WAIT_CARD_READY requires its pass condition on two *consecutive* polls;
+  // this remembers whether the previous poll passed. See that state for why one
+  // poll is not sufficient.
+  logic card_ready_once_d, card_ready_once_q;
+  `FF(card_ready_once_q, card_ready_once_d, 1'b0, clk_i, rst_ni)
 
   // -------------------------------------------------------------------------
   // Helpers
@@ -438,6 +464,7 @@ module adc_acquisition_sdcard_controller
     pipe_valid_d       = pipe_valid_q;
     rd_pending_d       = rd_pending_q;
     poll_timeout_cnt_d = poll_timeout_cnt_q;
+    card_ready_once_d  = card_ready_once_q;
 
     // Default outputs: idle / no-op
     copy_read_req_o  = '0;
@@ -801,64 +828,7 @@ module adc_acquisition_sdcard_controller
       CE_ACK_TRANSFER_COMPLETE_RSP: begin
         if (copy_write_rsp_i.rvalid) begin
           poll_timeout_cnt_d = '0;
-          state_d            = CE_WAIT_AUTOCMD12_COMPLETE;
-        end
-      end
-
-      // --------------------------------------------------------------------
-      // AUTO_CMD12 closes the session, and it is not optional: sdModel.v
-      // clears its mult_write flag only in the CMD12 handler, and a real card
-      // likewise stays in RCV until stopped. dat_wrap.sv raises
-      // request_cmd12_o on the *same* WRITE->READY edge that produced
-      // TRANSFER_COMPLETE, and autocmd_wrap.sv then issues CMD12 with an R1b
-      // (busy-checked) response, so command_inhibit_dat goes back up shortly
-      // after it went down.
-      //
-      // That "shortly after" is why this wait exists rather than dropping
-      // straight into CE_WAIT_CARD_READY: CMD12 is issued on the SD clock,
-      // which is divided down from the system clock, while this FSM gets from
-      // TRANSFER_COMPLETE to its next PRESENT_STATE read in a handful of OBI
-      // round trips. Polling PRESENT_STATE directly could therefore sample
-      // the gap *before* CMD12 raises command_inhibit again, read "card
-      // idle", and release the bank with the session still open.
-      //
-      // COMMAND_COMPLETE is unambiguous here: CMD25's own was consumed and
-      // W1C-cleared back at CE_ACK_CMD_COMPLETE, so a set bit now can only
-      // belong to the AUTO_CMD12. ERROR_INTERRUPT covers an AUTO_CMD12
-      // failure too -- it sets EINTR_STATUS bit 8 (auto_cmd12_error), which
-      // ORs into ERROR_INTERRUPT, so no separate read of
-      // AUTO_CMD12_ERROR_STATUS (0x3c) is needed to notice it.
-      CE_WAIT_AUTOCMD12_COMPLETE: begin
-        copy_write_req_o   = obi_read(SDHCI_NINTR);
-        poll_timeout_cnt_d = poll_timeout_cnt_q + 1'b1;
-        if (copy_write_rsp_i.gnt)
-          state_d = CE_WAIT_AUTOCMD12_COMPLETE_RSP;
-      end
-
-      CE_WAIT_AUTOCMD12_COMPLETE_RSP: begin
-        poll_timeout_cnt_d = poll_timeout_cnt_q + 1'b1;
-        if (copy_write_rsp_i.rvalid) begin
-          if (copy_write_rsp_i.r.rdata[15]) begin // ERROR_INTERRUPT
-            state_d = CE_OVERFLOW;
-          end else if (copy_write_rsp_i.r.rdata[0]) begin // COMMAND_COMPLETE
-            state_d = CE_ACK_AUTOCMD12_COMPLETE;
-          end else if (poll_timeout_cnt_q >= POLL_TIMEOUT) begin
-            state_d = CE_OVERFLOW;
-          end else begin
-            state_d = CE_WAIT_AUTOCMD12_COMPLETE; // retry
-          end
-        end
-      end
-
-      CE_ACK_AUTOCMD12_COMPLETE: begin
-        copy_write_req_o = obi_write(SDHCI_NINTR, {16'h0, CMD_COMPLETE_BIT}, 4'h3);
-        if (copy_write_rsp_i.gnt)
-          state_d = CE_ACK_AUTOCMD12_COMPLETE_RSP;
-      end
-
-      CE_ACK_AUTOCMD12_COMPLETE_RSP: begin
-        if (copy_write_rsp_i.rvalid) begin
-          poll_timeout_cnt_d = '0;
+          card_ready_once_d  = 1'b0;
           state_d            = CE_WAIT_CARD_READY;
         end
       end
@@ -905,16 +875,40 @@ module adc_acquisition_sdcard_controller
       // -- no hang. CMD_INHIBIT_CMD/DAT are folded into the same check so a
       // single read covers both "host controller idle" and "card idle".
       //
-      // By this point AUTO_CMD12's own R1b busy has already been waited out
-      // (CE_WAIT_AUTOCMD12_COMPLETE), so what remains here is the card
-      // finishing its last program cycle and returning PRG -> TRAN.
+      // This wait also covers AUTO_CMD12, which is why there is no separate
+      // state for it. There cannot be one: SDHCI never reports COMMAND_COMPLETE
+      // for an auto command, because autocmd_wrap.sv deliberately masks the
+      // status bit the interrupt is derived from --
+      //   command_inhibit_cmd_o.d = driver_cmd_queued_q |
+      //                             (cmd_inhibit_logic && ~running_autocmd12_q)
+      // -- so present_state.command_inhibit_cmd never rises for CMD12 and its
+      // 1->0 edge, which is what sets COMMAND_COMPLETE, never happens. (Per
+      // spec: Auto CMD12 does not generate Command Complete. An earlier
+      // revision waited for one here and hung until POLL_TIMEOUT.) What *does*
+      // cover CMD12 is CMD_INHIBIT_DAT, via dat_state entering BUSY for its
+      // R1b response.
       //
-      // Note on POLL_TIMEOUT: this is the one wait whose natural duration is
-      // set by flash programming rather than by bus turnaround. 500k cycles
-      // is ~5 ms at 100 MHz, comfortable against this testbench model (~500
-      // cycles) but short of the ~250 ms a real card may legitimately take
-      // to finish programming -- raise POLL_TIMEOUT before running against
-      // real silicon.
+      // Hence the two-consecutive-poll requirement. TRANSFER_COMPLETE fires on
+      // command_inhibit_dat's 1->0 edge, and AUTO_CMD12 re-raises it one cycle
+      // later when the command is accepted -- so there is a 1-cycle window in
+      // which everything reads idle while CMD12 has not even started. A single
+      // passing poll landing there would release the bank mid-session.
+      // Requiring two consecutive passes closes it without depending on
+      // arithmetic about OBI round-trip length: the CMD12 busy window is ~107
+      // cycles wide against a poll interval of ~3, so a poll that lands in the
+      // gap is always followed by one that does not.
+      //
+      // Do not be tempted to lean on DAT0 here instead. It happens to stay
+      // high across that window against sdModel.v, whose CMD12 asserts no R1b
+      // busy at all -- checked on the waveform -- so DAT0 provides no coverage
+      // of this race even though it is the right signal for the card's own
+      // programming busy afterwards.
+      //
+      // Note on POLL_TIMEOUT: this wait's natural duration is set by flash
+      // programming rather than by bus turnaround, which is what drove
+      // POLL_TIMEOUT's sizing -- 25M cycles = 250 ms at 100 MHz, the SD spec's
+      // permitted worst case for a write. Against this testbench model (~500
+      // cycles) that is vastly oversized and costs nothing.
       CE_WAIT_CARD_READY: begin
         copy_write_req_o   = obi_read(SDHCI_PRESENT_STATE);
         poll_timeout_cnt_d = poll_timeout_cnt_q + 1'b1;
@@ -927,13 +921,39 @@ module adc_acquisition_sdcard_controller
         if (copy_write_rsp_i.rvalid) begin
           if (((copy_write_rsp_i.r.rdata & CMD_INHIBIT_MASK) == 32'h0) &&
               ((copy_write_rsp_i.r.rdata & DAT0_LEVEL_MASK) != 32'h0)) begin
-            state_d = CE_DONE;
+            // Idle this poll -- but only act on it if the previous poll agreed.
+            card_ready_once_d = 1'b1;
+            if (card_ready_once_q) begin
+              poll_timeout_cnt_d = '0;
+              state_d            = CE_CHECK_ERRORS;
+            end else begin
+              state_d = CE_WAIT_CARD_READY; // confirm once more
+            end
           end else if (poll_timeout_cnt_q >= POLL_TIMEOUT) begin
             state_d = CE_OVERFLOW;
           end else begin
-            state_d = CE_WAIT_CARD_READY; // retry
+            card_ready_once_d = 1'b0; // not idle: restart the confirmation
+            state_d           = CE_WAIT_CARD_READY;
           end
         end
+      end
+
+      // --------------------------------------------------------------------
+      // Final gate before the bank is released: one NINTR_STATUS read to catch
+      // anything the session latched but no earlier state polled for. Notably
+      // AUTO_CMD12 failures, which set EINTR_STATUS.auto_cmd12_error (bit 8)
+      // and through it ERROR_INTERRUPT -- with no COMMAND_COMPLETE to check,
+      // this is the only place an AUTO_CMD12 problem can be noticed at all.
+      // Also catches data CRC/end-bit errors raised late in the data phase.
+      CE_CHECK_ERRORS: begin
+        copy_write_req_o = obi_read(SDHCI_NINTR);
+        if (copy_write_rsp_i.gnt)
+          state_d = CE_CHECK_ERRORS_RSP;
+      end
+
+      CE_CHECK_ERRORS_RSP: begin
+        if (copy_write_rsp_i.rvalid)
+          state_d = copy_write_rsp_i.r.rdata[15] ? CE_OVERFLOW : CE_DONE;
       end
 
       // --------------------------------------------------------------------

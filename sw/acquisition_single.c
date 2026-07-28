@@ -86,7 +86,7 @@ static void run_acquisition(void) {
 
 static void dump_frame(void) {
     printf("BEGIN DUMP\n");
-    for (uint32_t i = 0; i < N_WORDS; i++) {
+    for (uint32_t i = 0; i < 3; i++) {
         uint32_t w = *reg32(F0_START_ADDR_BYTE, 4u * i);
         printf("%x: lo=%x hi=%x\n", i, lo14(w), hi14(w));
     }
