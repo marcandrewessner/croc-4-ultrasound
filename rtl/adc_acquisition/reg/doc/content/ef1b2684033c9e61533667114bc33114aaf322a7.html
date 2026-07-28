@@ -10,12 +10,12 @@
     <dt>Base Offset:</dt><dd class="address">0x28</dd>
     <dt>Size:</dt><dd class="address">0x4</dd>
     
-    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L166" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
+    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/worktree-sdcard-pulse-mode/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L182" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
     
 </dl>
 <h2>Description</h2>
 <div id="_Content.desc">
-<p>Bytes per SD block, written by the HW copy engine into SDHCI BLOCK_SIZE at the start of every CMD25 session. Must be 512 for SDHC/SDXC cards, which fix the write block length. Software must keep this consistent with the frame geometry: SDCARD_BLOCK_SIZE * SDCARD_BLOCK_COUNT must equal the frame's byte count (Fx_END_ADDR - Fx_START_ADDR + 4).</p>
+<p>Bytes per SD block, written by the HW copy engine into SDHCI BLOCK_SIZE at the start of every CMD25 session. Must be 512 for SDHC/SDXC cards, which fix the write block length. Software must keep this consistent with the session geometry: SDCARD_BLOCK_SIZE * SDCARD_BLOCK_COUNT must equal the session's byte count -- one frame (F0_END_ADDR - F0_START_ADDR + 4) in SDCARD_CONTINUOUS mode, both frames added together in SDCARD_PULSE mode.</p>
 </div>
 
 <h2>Contents</h2>

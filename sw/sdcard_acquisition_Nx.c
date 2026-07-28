@@ -1,6 +1,6 @@
 // SDCard acquisition program -- N-frame capture, N set by NUM_FRAMES below.
 //
-// ACQ_SDCARD is a single mechanism parametrized by frame count (see
+// SDCARD_CONTINUOUS is a single mechanism parametrized by frame count (see
 // rtl/adc_acquisition/DATAPATH.md): set NUM_FRAMES to 1 for a single-block
 // capture (what used to be a separate SINGLE_SDCARD mode), or to any N>1
 // for an F0/F1 ping-pong multi-block capture (what used to be
@@ -15,7 +15,7 @@
 // There is still nothing for software to drive on the SD side: no CMD25 to
 // open, no BLOCK_COUNT to poke, no BUFFER_WRITE_READY to pre-arm, no CMD12
 // to send. Software's job is just: SD card init, configure the ADC_ACQ
-// registers below, enable ACQ_SDCARD, poll for completion.
+// registers below, enable SDCARD_CONTINUOUS, poll for completion.
 //
 // Flow, identical for any N:
 //   1. Full SD card init (reset -> identify -> select -> 4-bit -> block size).
@@ -25,7 +25,7 @@
 //      session), SDCARD_BLOCK_ADDR (starting address), SDCARD_ADDR_MODE
 //      (addressing units), SDCARD_FRAME_COUNT = NUM_FRAMES (this is what
 //      lets the ADC-fill side stop itself exactly at frame NUM_FRAMES
-//      instead of overrunning it, DATAPATH.md §2a), and enable ACQ_SDCARD
+//      instead of overrunning it, DATAPATH.md §2a), and enable SDCARD_CONTINUOUS
 //      mode.
 //   3. Poll SDCARD_DONE (fires once the whole capture is physically written
 //      and the card is idle again) / SDCARD_OVERFLOW.
@@ -121,7 +121,7 @@ int main(void) {
     ADC_ACQ->F1_START_ADDR      = F1_START_ADDR_BYTE;
     ADC_ACQ->F1_END_ADDR        = F1_END_ADDR_BYTE;
     ADC_ACQ->CNTRL              = (1u << ADC_ACQ_CTRL_RST_WRITE_HEAD_BIT);
-    ADC_ACQ->CONF               = ADC_ACQ_MODE_ACQ_SDCARD;
+    ADC_ACQ->CONF               = ADC_ACQ_MODE_SDCARD_CONTINUOUS;
 
     printf("Acquiring %x frames...\n", NUM_FRAMES);
 

@@ -189,6 +189,7 @@ package adc_acquisition_reg_pkg;
         adc_mode__IDLE = 'h0,
         adc_mode__SINGLE_ACQ_F0 = 'h4,
         adc_mode__CONTINUOUS_ACQ_F0_F1 = 'h10,
-        adc_mode__ACQ_SDCARD = 'h18
+        adc_mode__SDCARD_CONTINUOUS = 'h18,
+        adc_mode__SDCARD_PULSE = 'h1c
     } adc_mode_e;
 endpackage

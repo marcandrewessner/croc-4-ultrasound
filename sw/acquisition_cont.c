@@ -6,7 +6,7 @@
 // consumer here is software (this program), not the HW copy engine -- see
 // sdcard_acquisition_Nx.c for that variant. No SD card / SDHCI involved.
 //
-// Unlike SINGLE_ACQ_F0 (and ACQ_SDCARD), this mode never auto-reverts to
+// Unlike SINGLE_ACQ_F0 (and the SDCARD_* modes), this mode never auto-reverts to
 // IDLE: it runs until software decides it has enough frames and switches
 // CONF.MODE back to IDLE itself.
 //

@@ -10,12 +10,12 @@
     <dt>Base Offset:</dt><dd class="address">0x2c</dd>
     <dt>Size:</dt><dd class="address">0x4</dd>
     
-    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L177" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
+    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/worktree-sdcard-pulse-mode/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L193" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
     
 </dl>
 <h2>Description</h2>
 <div id="_Content.desc">
-<p>Number of blocks in one CMD25 session, i.e. how many SD blocks one frame (one SRAM bank) holds. Written by the HW copy engine into SDHCI BLOCK_COUNT at the start of every session, with block-count-enable set so the controller ends the session -- and raises TRANSFER_COMPLETE -- after exactly this many blocks. Also the amount SDCARD_BLOCK_ADDR advances per session when SDCARD_ADDR_MODE selects block units.</p>
+<p>Number of blocks in one CMD25 session. In SDCARD_CONTINUOUS mode a session covers one frame (one SRAM bank), so this is the blocks per bank (4 for a full 2 KiB bank); in SDCARD_PULSE mode the single session covers <em>both</em> banks, so it is the blocks in F0 plus F1 (8 for two full banks). Written by the HW copy engine into SDHCI BLOCK_COUNT at the start of every session, with block-count-enable set so the controller ends the session -- and raises TRANSFER_COMPLETE -- after exactly this many blocks. Also the amount SDCARD_BLOCK_ADDR advances per session when SDCARD_ADDR_MODE selects block units.</p>
 </div>
 
 <h2>Contents</h2>

@@ -5,7 +5,7 @@
 // Authors:
 // - Marc-André Wessner
 //
-// End-to-end test for CONF.MODE = ACQ_SDCARD with SDCARD_FRAME_COUNT = 1
+// End-to-end test for CONF.MODE = SDCARD_CONTINUOUS with SDCARD_FRAME_COUNT = 1
 // (single-frame capture): exercises the full ADC -> pack -> CDC FIFO ->
 // SRAM -> copy engine -> SDHCI -> card path, and the SDCARD_OVERFLOW
 // safety path.
@@ -109,7 +109,7 @@ int main(void) {
     ADC_ACQ->F0_START_ADDR      = F0_BASE;
     ADC_ACQ->F0_END_ADDR        = F0_END;
     ADC_ACQ->CNTRL              = (1u << ADC_ACQ_CTRL_RST_WRITE_HEAD_BIT);
-    ADC_ACQ->CONF               = ADC_ACQ_MODE_ACQ_SDCARD;
+    ADC_ACQ->CONF               = ADC_ACQ_MODE_SDCARD_CONTINUOUS;
 
     uint32_t status = wait_terminal_status();
     ADC_ACQ->CONF = ADC_ACQ_MODE_IDLE;
@@ -170,7 +170,7 @@ int main(void) {
     ADC_ACQ->SDCARD_FRAME_COUNT = 1;
 
     uint32_t block_addr_before = ADC_ACQ->SDCARD_BLOCK_ADDR;
-    ADC_ACQ->CONF  = ADC_ACQ_MODE_ACQ_SDCARD;
+    ADC_ACQ->CONF  = ADC_ACQ_MODE_SDCARD_CONTINUOUS;
 
     status = wait_terminal_status();
     ADC_ACQ->CONF = ADC_ACQ_MODE_IDLE;

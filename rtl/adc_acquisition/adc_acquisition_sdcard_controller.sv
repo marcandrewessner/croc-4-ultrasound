@@ -1,16 +1,34 @@
 // SDCard copy controller for ADC acquisition pipeline.
 //
 // Software is responsible for SD card initialisation (CMD0..CMD16: reset,
-// identify, select, 4-bit bus, block length) before enabling ACQ_SDCARD
-// mode. From that point on, this module owns the SD protocol by itself:
-// per job it opens one CMD25 (WRITE_MULTIPLE_BLOCK) session covering the
-// whole frame -- SDCARD_BLOCK_COUNT blocks of SDCARD_BLOCK_SIZE bytes --
-// streams every word of the frame into the SDHCI data port back to back,
+// identify, select, 4-bit bus, block length) before enabling one of the
+// SDCARD_* modes. From that point on, this module owns the SD protocol by
+// itself: per job it opens one CMD25 (WRITE_MULTIPLE_BLOCK) session
+// covering the whole job -- SDCARD_BLOCK_COUNT blocks of SDCARD_BLOCK_SIZE
+// bytes -- streams every word of it into the SDHCI data port back to back,
 // and lets AUTO_CMD12 close the session.
 //
 // A "frame" here is one entire SRAM bank (2 KiB = 4 x 512 B blocks), not
 // one SD block: adc_acquisition_top ping-pongs the two banks, so the ADC
 // fills one while this engine streams the other out.
+//
+// A job covers either one bank or both, selected by copy_both_i, and that
+// is the *only* difference between the two SDCARD_* modes as far as this
+// module is concerned:
+//   - copy_both_i = 0 (SDCARD_CONTINUOUS): one job per filled bank,
+//     copy_f0_i picking which. Capture and streaming overlap.
+//   - copy_both_i = 1 (SDCARD_PULSE): one job for the whole capture, run
+//     only once *both* banks are full, streaming F0's words and then F1's
+//     into a single session (8 blocks for two full banks instead of 4).
+//     Nothing overlaps -- the ADC has already stopped -- so the card never
+//     has to keep up with the ADC in real time; the price is a capture
+//     bounded at two banks.
+// A both-banks job does not assume F1 is contiguous with F0 in the address
+// map (it happens to be): the read address switches base explicitly once
+// F0's word count is exhausted, so the two Fx_START_ADDR/Fx_END_ADDR pairs
+// stay independent. On the SD side it is one uninterrupted session either
+// way -- the card sees 8 blocks with its own internally advancing write
+// pointer and cannot tell the bank switch happened.
 //
 // Relation to the earlier per-block CMD24 design (DATAPATH.md §1): that
 // design existed because banks had to be released one block at a time,
@@ -39,7 +57,8 @@
 // This module is a passive subordinate to adc_acquisition_top's control
 // logic: it does not watch CONF.MODE or STATUS.Fx_FULL itself, it only
 // reacts to an explicit start_i pulse (with copy_f0_i selecting which
-// frame, is_last_frame_i marking whether this is the capture's final
+// frame, copy_both_i widening the job to both frames, is_last_frame_i
+// marking whether this is the capture's final
 // frame) and reports back via busy_o plus the existing *_set_o/*_clear_o
 // pulses. It never re-arms itself -- every copy job is initiated from the
 // outside, one at a time, and the module parks in CE_IDLE (busy_o low)
@@ -48,9 +67,10 @@
 // state where the module reports idle while data is still in flight.
 //
 // Per job:
-//   1. On start_i, latch which frame to copy (copy_f0_i), its word count
-//      (Fx_END_ADDR - Fx_START_ADDR + 1), and whether this is the
-//      capture's last frame (is_last_frame_i).
+//   1. On start_i, latch which frame to copy (copy_f0_i) or that both are
+//      to be copied (copy_both_i), the job's total word count (one frame's
+//      Fx_END_ADDR - Fx_START_ADDR + 1, or both frames' added together),
+//      and whether this is the capture's last frame (is_last_frame_i).
 //   2. CE_CLEAR_STALE_STATUS: W1C-clear every NINTR_STATUS bit this FSM
 //      polls (TRANSFER_COMPLETE, BUFFER_WRITE_READY, COMMAND_COMPLETE) and
 //      every EINTR_STATUS bit, unconditionally, before this job's own CMD25
@@ -176,7 +196,8 @@
 //      committing. With no COMMAND_COMPLETE for AUTO_CMD12 there is
 //      nowhere else an AUTO_CMD12 failure (EINTR_STATUS bit 8) could be
 //      noticed; it also catches late data CRC/end-bit errors.
-//  14. CE_DONE: release the bank (Fx_FULL clear), advance
+//  14. CE_DONE: release the bank -- both banks for a copy_both_i job --
+//      (Fx_FULL clear), advance
 //      SDCARD_BLOCK_ADDR by block_addr_advance_o (+SDCARD_BLOCK_COUNT for
 //      block addressing, +this frame's byte count for byte addressing --
 //      see SDCARD_ADDR_MODE; note the card advances internally *within*
@@ -207,8 +228,9 @@ module adc_acquisition_sdcard_controller
 
   // Job control: top-level explicitly starts a copy and selects the frame;
   // this module never decides to start on its own.
-  input  logic start_i,          // pulse: begin copying one frame
+  input  logic start_i,          // pulse: begin copying one job
   input  logic copy_f0_i,        // 1 = copy F0, 0 = copy F1 (sampled on start_i)
+  input  logic copy_both_i,      // 1 = one session covering F0 then F1 (sampled on start_i)
   input  logic is_last_frame_i,  // 1 = this is the capture's final frame (sampled on start_i)
   output logic busy_o,           // low iff parked in CE_IDLE, ready for start_i
 
@@ -340,20 +362,30 @@ module adc_acquisition_sdcard_controller
   logic copying_f0_d, copying_f0_q;
   `FF(copying_f0_q, copying_f0_d, 1'b1, clk_i, rst_ni)
 
+  // 1 = this job streams F0 *and* F1 in one session (SDCARD_PULSE).
+  logic copying_both_d, copying_both_q;
+  `FF(copying_both_q, copying_both_d, 1'b0, clk_i, rst_ni)
+
   logic is_last_frame_d, is_last_frame_q;
   `FF(is_last_frame_q, is_last_frame_d, 1'b0, clk_i, rst_ni)
 
-  // Word count of the frame being copied, latched at job start from
-  // (Fx_END_ADDR - Fx_START_ADDR + 1) -- see header comment. 11 bits: a
-  // frame is now a whole SRAM bank (2 KiB = 512 words) rather than a single
-  // 512 B block, and the width is one bit wider than that needs so a larger
-  // bank does not become a silent truncation.
-  logic [10:0] frame_words_d, frame_words_q;
-  `FF(frame_words_q, frame_words_d, 11'd512, clk_i, rst_ni)
+  // Total word count of the job, latched at job start: one frame's
+  // (Fx_END_ADDR - Fx_START_ADDR + 1), or both frames' added together for a
+  // both-banks job -- see header comment. 12 bits: a both-banks job spans
+  // two whole SRAM banks (4 KiB = 1024 words), and the width is one bit
+  // wider than that needs so larger banks do not become a silent truncation.
+  logic [11:0] frame_words_d, frame_words_q;
+  `FF(frame_words_q, frame_words_d, 12'd512, clk_i, rst_ni)
+
+  // Words contributed by F0, i.e. the index at which a both-banks job
+  // switches its read base from F0 to F1. Only meaningful when
+  // copying_both_q; latched alongside frame_words_q.
+  logic [11:0] first_bank_words_d, first_bank_words_q;
+  `FF(first_bank_words_q, first_bank_words_d, 12'd512, clk_i, rst_ni)
 
   // Copy counters
-  logic [10:0] rd_idx_d, rd_idx_q; // SRAM reads issued (0..frame_words_q)
-  logic [10:0] wr_idx_d, wr_idx_q; // SDHCI writes done (0..frame_words_q)
+  logic [11:0] rd_idx_d, rd_idx_q; // SRAM reads issued (0..frame_words_q)
+  logic [11:0] wr_idx_d, wr_idx_q; // SDHCI writes done (0..frame_words_q)
   `FF(rd_idx_q, rd_idx_d, '0, clk_i, rst_ni)
   `FF(wr_idx_q, wr_idx_d, '0, clk_i, rst_ni)
 
@@ -393,23 +425,50 @@ module adc_acquisition_sdcard_controller
   // -------------------------------------------------------------------------
   assign busy_o = (state_q != CE_IDLE);
 
-  // Byte address of the frame being copied
+  // Byte address of the bank the job *starts* in. For a both-banks job this
+  // is always F0 (adc_acquisition_top drives copy_f0_i high for it, and
+  // copying_f0_d forces it anyway), and sram_rd_addr below switches to F1
+  // partway through.
   logic [31:0] sram_copy_base;
   assign sram_copy_base = copying_f0_q
     ? {reg2hw.F0_START_ADDR.WORD_ADDRESS.value, 2'b00}
     : {reg2hw.F1_START_ADDR.WORD_ADDRESS.value, 2'b00};
 
-  // Word count of the frame start_i is about to select, sampled combinatorially
-  // off copy_f0_i (same timing as copying_f0_d) so it's valid the cycle start_i fires.
+  // Address of the word CE_COPY_WORD reads next. A single-bank job walks
+  // sram_copy_base linearly; a both-banks job walks F0 for its
+  // first_bank_words_q words and then restarts from F1_START_ADDR, so F1
+  // does not have to abut F0 in the address map for the session to be one
+  // contiguous stream on the card.
+  logic [11:0] rd_idx_in_bank;
+  logic [31:0] sram_rd_addr;
+  always_comb begin
+    if (copying_both_q && rd_idx_q >= first_bank_words_q) begin
+      rd_idx_in_bank = rd_idx_q - first_bank_words_q;
+      sram_rd_addr   = {reg2hw.F1_START_ADDR.WORD_ADDRESS.value, 2'b00}
+                       + {rd_idx_in_bank, 2'b00};
+    end else begin
+      rd_idx_in_bank = rd_idx_q;
+      sram_rd_addr   = sram_copy_base + {rd_idx_in_bank, 2'b00};
+    end
+  end
+
+  // Word counts of the two frames, and of the job start_i is about to
+  // select, sampled combinatorially off copy_f0_i/copy_both_i (same timing
+  // as copying_f0_d/copying_both_d) so they're valid the cycle start_i fires.
   // Fx_END_ADDR is the address of the frame's *last* word (inclusive, matches
   // f0_frame_just_filled in adc_acquisition_top.sv and every sw example's
   // "F0_END_ADDR_BYTE = F0_START_ADDR_BYTE + 512 - 4" convention), so the
   // word count is the START/END word-address span plus 1, not the raw
   // difference -- omitting the +1 undercounts by exactly one word.
+  logic [29:0] f0_words, f1_words;
+  assign f0_words =
+    (reg2hw.F0_END_ADDR.WORD_ADDRESS.value - reg2hw.F0_START_ADDR.WORD_ADDRESS.value) + 30'd1;
+  assign f1_words =
+    (reg2hw.F1_END_ADDR.WORD_ADDRESS.value - reg2hw.F1_START_ADDR.WORD_ADDRESS.value) + 30'd1;
+
   logic [29:0] frame_words_next;
-  assign frame_words_next = copy_f0_i
-    ? (reg2hw.F0_END_ADDR.WORD_ADDRESS.value - reg2hw.F0_START_ADDR.WORD_ADDRESS.value) + 30'd1
-    : (reg2hw.F1_END_ADDR.WORD_ADDRESS.value - reg2hw.F1_START_ADDR.WORD_ADDRESS.value) + 30'd1;
+  assign frame_words_next = copy_both_i ? (f0_words + f1_words)
+                                        : (copy_f0_i ? f0_words : f1_words);
 
   // CMD25's argument is SDCARD_BLOCK_ADDR's current value, used as-is
   // regardless of addressing mode -- the mode only changes how much gets
@@ -421,13 +480,16 @@ module adc_acquisition_sdcard_controller
 
   // How far to advance SDCARD_BLOCK_ADDR once this *session* completes:
   // block addressing (BLOCK_UNITS=1) advances by the session's block count;
-  // byte addressing (BLOCK_UNITS=0) advances by the frame's byte count,
+  // byte addressing (BLOCK_UNITS=0) advances by the session's byte count,
   // derived from frame_words_q. The two agree by construction as long as
-  // software keeps SDCARD_BLOCK_SIZE * SDCARD_BLOCK_COUNT equal to the frame
-  // size, since a frame's byte count is exactly blocks * block_size.
+  // software keeps SDCARD_BLOCK_SIZE * SDCARD_BLOCK_COUNT equal to the
+  // session size, since a session's byte count is exactly
+  // blocks * block_size -- note "session" is one frame in SDCARD_CONTINUOUS
+  // and both frames in SDCARD_PULSE, and frame_words_q already accounts for
+  // that, so this is unchanged for either mode.
   assign block_addr_advance_o = reg2hw.SDCARD_ADDR_MODE.BLOCK_UNITS.value
     ? {16'b0, reg2hw.SDCARD_BLOCK_COUNT.BLOCK_COUNT.value}
-    : {19'b0, frame_words_q, 2'b00};
+    : {18'b0, frame_words_q, 2'b00};
 
   // Builds a single-word OBI request. Every state below assigns
   // copy_read_req_o/copy_write_req_o = obi_read(...)/obi_write(...) instead
@@ -456,8 +518,10 @@ module adc_acquisition_sdcard_controller
   always_comb begin : sdcard_fsm
     state_d            = state_q;
     copying_f0_d        = copying_f0_q;
+    copying_both_d     = copying_both_q;
     is_last_frame_d    = is_last_frame_q;
     frame_words_d      = frame_words_q;
+    first_bank_words_d = first_bank_words_q;
     rd_idx_d           = rd_idx_q;
     wr_idx_d           = wr_idx_q;
     pipe_data_d        = pipe_data_q;
@@ -485,9 +549,14 @@ module adc_acquisition_sdcard_controller
         // adc_acquisition_top, including whether SDCARD_OVERFLOW or the
         // per-session frame budget should block further jobs.
         if (start_i) begin
-          copying_f0_d       = copy_f0_i;
+          // A both-banks job always starts in F0, independently of what
+          // copy_f0_i happens to say -- stated here rather than relied upon
+          // from the caller, since sram_copy_base keys off copying_f0_q.
+          copying_f0_d       = copy_both_i | copy_f0_i;
+          copying_both_d     = copy_both_i;
           is_last_frame_d    = is_last_frame_i;
-          frame_words_d      = frame_words_next[10:0];
+          frame_words_d      = frame_words_next[11:0];
+          first_bank_words_d = f0_words[11:0];
           state_d            = CE_CLEAR_STALE_STATUS;
         end
       end
@@ -711,8 +780,10 @@ module adc_acquisition_sdcard_controller
       end
 
       // --------------------------------------------------------------------
-      // Copy the whole frame, one word at a time, straight through every
-      // block boundary in the session -- there is no per-block handshake.
+      // Copy the whole job, one word at a time, straight through every
+      // block boundary in the session -- there is no per-block handshake --
+      // and, for a both-banks job, straight through the F0 -> F1 bank
+      // switch too (sram_rd_addr), which is invisible on the SD side.
       //
       // READ side (copy_read -> SRAM): issue next read only once the pipe
       //   slot is fully free -- no read outstanding (rd_pending_q) and no
@@ -743,7 +814,7 @@ module adc_acquisition_sdcard_controller
 
         // --- READ side ---
         if (rd_idx_q < frame_words_q && !pipe_valid_q && !rd_pending_q) begin
-          copy_read_req_o = obi_read(sram_copy_base + {rd_idx_q, 2'b00});
+          copy_read_req_o = obi_read(sram_rd_addr);
           if (copy_read_rsp_i.gnt) begin
             rd_idx_d     = rd_idx_q + 1;
             rd_pending_d = 1'b1;
@@ -963,15 +1034,30 @@ module adc_acquisition_sdcard_controller
       end
 
       // --------------------------------------------------------------------
-      // Every frame releases its bank and advances the address the same
-      // way; only the capture's actual last frame (is_last_frame_q,
+      // Every job releases the bank(s) it consumed and advances the address
+      // the same way; only the capture's actual last frame (is_last_frame_q,
       // latched at job start) also asserts SDCARD_DONE. The advance is one
-      // whole session's worth (SDCARD_BLOCK_COUNT blocks / the frame's byte
+      // whole session's worth (SDCARD_BLOCK_COUNT blocks / the session's byte
       // count), not one block -- see block_addr_advance_o.
+      //
+      // A both-banks job releases *both* banks at once, and only here: F0
+      // stays flagged full for the whole session even though its words were
+      // streamed first, because the ADC must not start refilling it while
+      // the session is still in flight. (In SDCARD_PULSE the ADC has already
+      // parked on capture_done_q, so this is belt and braces -- but the
+      // release is what the mode's software re-arm sees, and releasing F0
+      // early would make Fx_FULL mean something different for a job that has
+      // not physically committed yet.)
       CE_DONE: begin
         block_addr_incr_o = 1'b1;
-        if (copying_f0_q) f0_full_clear_o = 1'b1;
-        else               f1_full_clear_o = 1'b1;
+        if (copying_both_q) begin
+          f0_full_clear_o = 1'b1;
+          f1_full_clear_o = 1'b1;
+        end else if (copying_f0_q) begin
+          f0_full_clear_o = 1'b1;
+        end else begin
+          f1_full_clear_o = 1'b1;
+        end
         if (is_last_frame_q)
           sdcard_done_set_o = 1'b1;
         state_d = CE_IDLE;

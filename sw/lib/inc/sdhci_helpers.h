@@ -35,7 +35,7 @@
 //  - Real card: mandatory. Without it the card stays in default speed
 //    (25 MHz ceiling) and clocking the bus at 50 MHz is out of spec; running
 //    in-spec at 25 MHz instead caps the 4-bit bus at 12.5 MB/s, below the
-//    ADC's 16 MB/s, so ACQ_SDCARD would overflow by construction. A failed
+//    ADC's 16 MB/s, so SDCARD_CONTINUOUS would overflow by construction. A failed
 //    switch is therefore a hard init failure, not a fallback.
 //
 //  - Model: skipped entirely, and it has to be. sdModel.v has no SWITCH_FUNC

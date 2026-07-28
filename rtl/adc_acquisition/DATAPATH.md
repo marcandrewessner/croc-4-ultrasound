@@ -5,17 +5,20 @@ are cited to file:line where it matters for a decision; skip otherwise.
 
 ## Modes — as implemented
 
-| Mode | Banks | Frame size | Consumer | N source | Throughput req |
+| Mode | Banks | Session covers | Consumer | N source | Throughput req |
 |---|---|---|---|---|---|
 | `IDLE` | — | — | — | — | — |
 | `SINGLE_ACQ_F0` | F0 | sw-set span | CPU read | fixed 1 | none |
 | `CONTINUOUS_ACQ_F0_F1` | F0+F1 | sw-set span | CPU read | unbounded | `T_read < T_fill` |
-| `ACQ_SDCARD` | F0+F1 | one whole bank (2 KiB) | HW copy + card | `SDCARD_FRAME_COUNT` | `T_session ≤ T_fill` |
+| `SDCARD_CONTINUOUS` | F0+F1 | one whole bank (2 KiB, 4 blocks) | HW copy + card | `SDCARD_FRAME_COUNT` | `T_session ≤ T_fill` |
+| `SDCARD_PULSE` | F0+F1 | **both** banks (4 KiB, 8 blocks) | HW copy + card | fixed 2 (both banks) | **none** |
 
-`SINGLE_SDCARD`/`CONTINUOUS_SDCARD` were collapsed into `ACQ_SDCARD` (§2,
-landed): one mechanism, parametrized by frame count. The ADC-fill side knows
-N only through `SDCARD_FRAME_COUNT`; the SD side's per-session geometry is
-`SDCARD_BLOCK_SIZE`/`SDCARD_BLOCK_COUNT` (§0).
+`SINGLE_SDCARD`/`CONTINUOUS_SDCARD` were collapsed into what is now
+`SDCARD_CONTINUOUS` (§2, landed): one mechanism, parametrized by frame
+count. The ADC-fill side knows N only through `SDCARD_FRAME_COUNT`; the SD
+side's per-session geometry is
+`SDCARD_BLOCK_SIZE`/`SDCARD_BLOCK_COUNT` (§0). `SDCARD_PULSE` (§5) is the
+same SD mechanism run once over both banks after capture has stopped.
 
 Bank-reuse is what matters, not the literal N:
 - N≤2: each bank written once, no reuse → no throughput requirement, only
@@ -25,6 +28,9 @@ Bank-reuse is what matters, not the literal N:
   `target_frame_full` (correctly) trips `SDCARD_OVERFLOW`. `T_fill` is now
   4× longer than in the per-block design (a whole bank, not one block), which
   is most of why the larger session is affordable.
+- `SDCARD_PULSE` sits outside this entirely: no bank is reused *and* no
+  session overlaps a fill, so the throughput requirement is not merely
+  slack, it is absent by construction (§5).
 
 ## §0 — CURRENT DESIGN: full-SRAM double buffering, `CMD25` per bank
 
@@ -299,8 +305,10 @@ consequence of the `CMD25` work:
    issues a CMD/DAT software reset before returning, for the same reason.
 3. **High speed is required, not optional.** At a spec-legal 25 MHz the 4-bit
    bus gives 12.5 MB/s against the ADC's 16 MB/s (8 MSa/s × 2 B), so
-   `ACQ_SDCARD` would overflow by construction. Only 50 MHz (25 MB/s) closes,
-   which is why a failed `CMD6` is treated as fatal rather than a fallback.
+   `SDCARD_CONTINUOUS` would overflow by construction. Only 50 MHz
+   (25 MB/s) closes, which is why a failed `CMD6` is treated as fatal rather
+   than a fallback. `SDCARD_PULSE` (§5) is exempt — it does not stream while
+   capturing — but high speed is still what makes its dump time reasonable.
 4. **`POLL_TIMEOUT` was 5 ms** against an SD-spec worst case of 250 ms per
    write. Now 25M cycles (250 ms at 100 MHz), counter widened 20 → 25 bits.
    This became urgent with `CMD25`: `CE_WAIT_TRANSFER_COMPLETE` now spans the
@@ -434,6 +442,127 @@ matters more now: a card qualified for the worst-case pause, not the average
 rate. Whatever is chosen, the N=4 sim passing is not evidence about it: the
 testbench ADC and the model card are both far away from the real operating
 point, in opposite directions.
+
+## §5 — CURRENT DESIGN: `SDCARD_PULSE`, capture first then stream
+
+> Live, alongside §0. §0 describes the SD-side session mechanism; this
+> section only changes *when* sessions are dispatched and how much SRAM one
+> session covers. Nothing in §0 is invalidated.
+
+`SDCARD_CONTINUOUS` (§0) buys unbounded capture length by overlapping
+capture with streaming, and pays for it with a hard real-time constraint:
+one `CMD25` session must complete within one bank fill, or the ADC catches
+up with a bank the engine has not released and `target_frame_full` trips
+`SDCARD_OVERFLOW`. §0b item 3 is the sharp end of that — at a spec-legal
+25 MHz the 4-bit bus gives 12.5 MB/s against the ADC's 16 MB/s, so the mode
+is only viable at all because `CMD6` high-speed puts the card at 25 MB/s.
+
+`SDCARD_PULSE` makes the opposite trade. The ADC fills F0, rolls straight
+on into F1, and stops; **only once both banks are full** does the copy
+engine run, streaming both of them out as a *single* `CMD25` session of 8 ×
+512 B blocks. Capture and streaming never overlap, so:
+
+- **There is no throughput requirement at all.** Not "more slack" — none.
+  The card can be arbitrarily slow; the pulse is already fully captured in
+  SRAM before the first block goes out. High speed becomes a
+  time-to-completion question rather than a correctness one.
+- **The capture is bounded at two banks** (4 KiB = 2048 samples). That is
+  the whole cost, and it is what makes the mode a *burst* rather than a
+  stream.
+- **Between pulses, samples are lost** while software re-arms. Inherent,
+  not a defect: a pulse is an event capture.
+
+### What is actually new in hardware
+
+Very little, deliberately — the SD-side sequence is byte-for-byte the §0
+one, including every fix §0a–§0d records.
+
+- **Dispatch condition** (`adc_acquisition_top.sv`): `sdcard_frames_ready`
+  is `F0_FULL && F1_FULL` in pulse mode instead of `F0_FULL || F1_FULL`.
+- **Job width** (`adc_acquisition_sdcard_controller.sv`): new `copy_both_i`,
+  latched at `start_i` like `copy_f0_i`. It widens `frame_words` to both
+  frames' word counts added together, and makes `CE_DONE` release both
+  banks.
+- **Read-base switch**: a both-banks job walks F0 for `first_bank_words_q`
+  words, then restarts from `F1_START_ADDR`. Explicitly, rather than
+  relying on F1 abutting F0 in the address map (it does — Bank2/Bank3 are
+  contiguous — but the two `Fx_*_ADDR` pairs stay independent registers, so
+  the engine should not silently depend on their values lining up). On the
+  wire it is one uninterrupted session: the card advances its own write
+  pointer per block and cannot tell the switch happened.
+- **Counter widths**: `frame_words`/`rd_idx`/`wr_idx` 11 → 12 bits (1024
+  words per job, plus the usual bit of headroom), and
+  `block_addr_advance_o`'s byte-mode concatenation retuned accordingly.
+- **No frame budget.** `frames_started_q` and `SDCARD_FRAME_COUNT` are
+  `SDCARD_CONTINUOUS`-only. Pulse mode's length is fixed at both banks, so
+  it sets `capture_done_q` directly at the F1 boundary. `SDCARD_FRAME_COUNT`
+  is *ignored* in this mode — `sw/test/test_adc_sdcard_pulse.c` sets it to 1
+  (a value that would stop a continuous capture after F0) specifically to
+  keep that true.
+
+### Why a separate mode and not `SDCARD_CONTINUOUS` with N=2
+
+They look adjacent — both fill exactly two banks — and they are not. Under
+`SDCARD_CONTINUOUS` with `SDCARD_FRAME_COUNT=2` the engine dispatches F0 the
+moment it fills, *while the ADC is still filling F1*, and writes two 4-block
+sessions. That is a different thing on the card (two sessions, two
+`AUTO_CMD12`s, two program cycles interleaved with capture) and it puts the
+card back in the real-time path for the F0 session. The distinguishing
+property of pulse mode is not the frame count, it is that **nothing is in
+flight while the ADC is running**. Sharing the ping-pong frame-budget
+machinery to express that would mean gating dispatch on a condition the
+budget does not encode.
+
+### Sequencing details worth knowing
+
+- **`is_last_frame_i` needs no special case.** `capture_done_q` is set at
+  the F1 boundary in the same cycle `F1_FULL` is raised — which is the same
+  cycle the job first becomes dispatchable — so it is already high when the
+  engine latches it. `SDCARD_DONE` therefore means what it always meant:
+  the capture's last frame is physically committed.
+- **Both banks are released only at `CE_DONE`**, not F0 when its words have
+  been read. `Fx_FULL` keeps meaning "this bank holds a captured frame the
+  consumer has not finished with", so an aborted session leaves both flags
+  set for software to see.
+- **`target_frame_full` cannot fire from reuse** here (each bank is written
+  once). It is kept as the guard against *starting* a pulse on top of a
+  bank whose `Fx_FULL` software never cleared.
+- **Re-arm is software's job**: `MODE` auto-reverts to `IDLE` on
+  `sdcard_done_set || sdcard_overflow_set` (that rule now covers both SD
+  modes), and `RESET_WRITE_HEAD` is what clears `capture_done_q`. See
+  `sw/sdcard_acquisition_pulse.c`'s loop. `SDCARD_BLOCK_ADDR` is
+  deliberately not reset between pulses, so consecutive pulses land back to
+  back on the card.
+
+### Not yet verified
+
+Written and reviewed, not simulated (no toolchain in the authoring
+environment). What to look at first in a run:
+
+- `test_adc_sdcard_pulse.c` end to end — its CMD17 readback of all 8 blocks
+  against SRAM is the real check on the F0→F1 base switch: a switch off by
+  one word misaligns everything from block 4 on, a switch that never
+  happened writes F0 twice.
+- That exactly *one* `CMD25` goes out per pulse (not two), with
+  `BLOCK_COUNT=8`, and that `SDCARD_BLOCK_ADDR` advances once per pulse.
+  `scripts/analyze_sdcard_wave.py` prints per-job timelines and the card's
+  decoded commands.
+- `NUM_PULSES > 1` in `sw/sdcard_acquisition_pulse.c` for the re-arm path —
+  the one sequence with no prior art here, since every earlier SD flow ran
+  a capture exactly once per program.
+
+**One number to revisit on real silicon: `POLL_TIMEOUT`.** It is left
+unchanged at 25M cycles (250 ms at 100 MHz), but note what pulse mode does
+to the wait it bounds. `CE_WAIT_TRANSFER_COMPLETE`'s counter is not reset
+per block — it spans the *whole* session including every inter-block
+program cycle — and a pulse session is 8 blocks where the continuous mode's
+is 4. If the SD spec's 250 ms is read as per-block rather than per-write,
+even the 4-block session was already under-provisioned against a
+pathological card; pulse mode doubles that exposure. Not changed here
+because it is not specific to this mode and the failure it would cause
+(a healthy slow transfer aborting as `SDCARD_OVERFLOW`) has not been
+observed — but it is the first thing to suspect if a real card reports
+overflow on a transfer that visibly completed.
 
 ## §1 — SUPERSEDED (see §0): multi-block `CMD25` abandoned in favor of per-block `CMD24`
 
@@ -747,7 +876,7 @@ written this cycle" — five sites in `adc_acquisition_top.sv`:
 `f0_frame_just_filled` (used by `SINGLE_ACQ_F0`'s `F0_FULL` *and* by the
 auto-stop that reverts `MODE` to `IDLE`, which had the same one-word-early
 problem), plus the inlined F0/F1 comparisons in `CONTINUOUS_ACQ_F0_F1` and
-`ACQ_SDCARD`. The inlined ones use `dma_push` directly, which is already
+the SD modes. The inlined ones use `dma_push` directly, which is already
 assigned at that point in the block; `f0_frame_just_filled` is a
 continuous assign *outside* that `always_comb`, so it uses
 `adc_data_word_ready` (the CDC FIFO output `dma_push` is derived from)
@@ -779,6 +908,10 @@ Updated for §0: the advance is per *session*, not per block. Within a
 session's starting address is ever sent.
 
 ## §2 — Mode collapse: `ACQ_SDCARD`
+
+> Historical. `ACQ_SDCARD` was later renamed `SDCARD_CONTINUOUS` when
+> `SDCARD_PULSE` joined it (§5); the names below are the ones in use at the
+> time.
 
 - `adc_acquisition_reg_definition.rdl`: single `ACQ_SDCARD` enum value
   (decide: drop `SINGLE_SDCARD` value, or alias for compat — open q).
