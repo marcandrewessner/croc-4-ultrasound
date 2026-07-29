@@ -19,8 +19,8 @@ module dat_buffer #(
   input  logic rst_ni,
   input  logic clear_i,
 
-  input  logic read_operation_i,
-  input  logic write_operation_i,
+  (* dont_touch = "yes", mark_debug = "true" *) input  logic read_operation_i,
+  (* dont_touch = "yes", mark_debug = "true" *) input  logic write_operation_i,
 
   input  logic        read_ready_i,
   output logic        read_valid_o,
@@ -63,16 +63,20 @@ module dat_buffer #(
   logic [MaxBlockBitSize-1:0] words_per_block;
   assign words_per_block = (effective_block_size + MaxBlockBitSize'(3)) >> 2;
 
-  logic [MaxBlockBitSize-1:0] current_word_counter_q, current_word_counter_d;
+  (* dont_touch = "yes", mark_debug = "true" *) logic [MaxBlockBitSize-1:0] current_word_counter_q, current_word_counter_d;
   `FFARNC (current_word_counter_q, current_word_counter_d, clear_i, '0, clk_i, rst_ni);
 
-  logic single_block_done_q, single_block_done_d;
+  // Debug: this latch only resets to 0 once read_operation_i/write_operation_i
+  // are both seen low for a cycle -- if dat_state_q never truly goes idle
+  // between the write and the read, accepts_data_port_chunk stays stuck low
+  // and could block the read from ever being signalled ready.
+  (* dont_touch = "yes", mark_debug = "true" *) logic single_block_done_q, single_block_done_d;
   `FFARNC(single_block_done_q, single_block_done_d, clear_i, 1'b0, clk_i, rst_ni);
 
-  logic reg_empty;
+  (* dont_touch = "yes", mark_debug = "true" *) logic reg_empty;
   assign empty_o = reg_empty;
 
-  logic [cf_math_pkg::idx_width(NumWords + 1)-1:0] reg_length;
+  (* dont_touch = "yes", mark_debug = "true" *) logic [cf_math_pkg::idx_width(NumWords + 1)-1:0] reg_length;
   logic [cf_math_pkg::idx_width(NumBytes + 1)-1:0] reg_remaining_bytes;
   assign reg_remaining_bytes = (cf_math_pkg::idx_width(NumBytes + 1))'(NumBytes - reg_length * 4);
 
@@ -80,15 +84,15 @@ module dat_buffer #(
   assign has_block       = reg_length * 4 >= effective_block_size;
   assign has_block_space = reg_remaining_bytes >= effective_block_size;
 
-  logic accepts_data_port_chunk;
+  (* dont_touch = "yes", mark_debug = "true" *) logic accepts_data_port_chunk;
   assign accepts_data_port_chunk =
       (!multi_block_i && !single_block_done_q) ||
       (multi_block_i && (!block_count_enable_i || block_count_i != '0));
 
-  logic enable_reg;
+  (* dont_touch = "yes", mark_debug = "true" *) logic enable_reg;
   assign enable_reg = read_operation_i || write_operation_i;
 
-  logic reg_full, reg_push, reg_pop;
+  (* dont_touch = "yes", mark_debug = "true" *) logic reg_full, reg_push, reg_pop;
   logic [31:0] reg_push_data, reg_pop_data;
 
   always_comb begin

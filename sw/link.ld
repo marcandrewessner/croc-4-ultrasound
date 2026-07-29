@@ -12,8 +12,14 @@ ENTRY(_start)
 
 MEMORY
 {
-	/* unified on-chip SRAM region used for all code and data */
-	SRAM (rwxail) : ORIGIN = 0x10000000, LENGTH = 4K
+	/* Code, rodata and writable data. The stack starts right above this
+	 * region and grows down into it with no hardware guard -- reserving
+	 * STACK's bytes here means an oversized .text/.rodata/.data becomes a
+	 * "region SRAM overflowed" link error instead of the stack silently
+	 * clobbering whatever the linker happened to place at the top of SRAM
+	 * (e.g. it can and did stomp the last few bytes of a lookup table). */
+	SRAM  (rwxail) : ORIGIN = 0x10000000,        LENGTH = 4096 - 512
+	STACK (rw)     : ORIGIN = 0x10000000 + 3584, LENGTH = 512
 }
 
 PHDRS
@@ -75,8 +81,8 @@ SECTIONS
 
 /* Place GP near the middle for efficient GP-relative access */
 PROVIDE(__global_pointer$ = ADDR(.misc) + SIZEOF(.misc) / 2);
-/* Initial stack pointer at the end of SRAM */
-PROVIDE(__stack_pointer$ = ORIGIN(SRAM) + LENGTH(SRAM));
+/* Initial stack pointer at the end of the reserved STACK region */
+PROVIDE(__stack_pointer$ = ORIGIN(STACK) + LENGTH(STACK));
 
 /* Bootrom symbols (fixed addresses) */
 PROVIDE(_eoc = 0x02000100);

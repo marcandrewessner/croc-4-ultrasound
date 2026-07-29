@@ -41,7 +41,7 @@
 //                       target_frame_full/SDCARD_OVERFLOW if the card
 //                       can't keep up with T_fill
 // ---------------------------------------------------------------------------
-#define NUM_FRAMES  4u
+#define NUM_FRAMES  1u
 
 #define TIMEOUT  250000U   // CLINT ticks (~7.5 s at 32 kHz) -- bounds the whole capture
 
@@ -54,19 +54,19 @@
 // Starting SDCARD_BLOCK_ADDR value and its units -- 1 = block addressing
 // (SDHC/SDXC-style, argument is a raw block number, advances by 1 per
 // block), 0 = byte addressing (standard-capacity-style, argument is a
-// byte address, advances by this frame's byte count per block). Most
-// cards in use today are SDHC/SDXC, so 1 is what real hardware wants.
+// byte address, advances by this frame's byte count per block).
 //
-// This is 0 because of the simulation card model, not because of the
-// design: rtl/test/sdcard/model/sdModel.v advertises CCS=1 in its OCR
-// (32'h40ff8000, i.e. "I am high capacity, address me in blocks") but its
-// CMD24 handler then does `BlockAddr = inCmd[39:8]` and indexes FLASHmem
-// with it directly -- a raw *byte* address. It even checks
-// `if (BlockAddr % 512 != 0) $display("**Block Misalign Error")`, which is
-// only meaningful for byte addressing. So against this model, block N must
-// be addressed as N*512. Set this back to 1 for a real SDHC/SDXC card.
+// 1, because real Genesys2 hardware testing (2026-07-28) confirmed the
+// physical card is high-capacity (ACMD41's OCR reported CCS=1, bit 30 of
+// 0xC0FF8000), which per SD spec means CMD17/CMD24 take a block number, not
+// a byte address. Only the simulation model wants 0: rtl/test/sdcard/model/
+// sdModel.v advertises CCS=1 in its OCR too but its CMD24 handler then does
+// `BlockAddr = inCmd[39:8]` and indexes FLASHmem with it directly -- a raw
+// *byte* address, checked with `if (BlockAddr % 512 != 0) $display("**Block
+// Misalign Error")`, which is only meaningful for byte addressing. So set
+// this back to 0 if testing against sdModel.v instead of real hardware.
 #define SDCARD_START_ADDR    0u
-#define SDCARD_ADDR_IS_BLOCKS 0u
+#define SDCARD_ADDR_IS_BLOCKS 1u
 
 int main(void) {
     uart_init();

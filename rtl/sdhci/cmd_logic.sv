@@ -55,7 +55,7 @@ module cmd_logic (
     RSP_TIMEOUT
   } cmd_fsm_t;
 
-  cmd_fsm_t cmd_state_q, cmd_state_d;
+  (* dont_touch = "yes", mark_debug = "true" *) cmd_fsm_t cmd_state_q, cmd_state_d;
   `FFARNC(cmd_state_q, cmd_state_d, clear_i, IDLE, clk_i, rst_ni);
 
   // TODO: this forces a sleep cycle in between transactions. This might not

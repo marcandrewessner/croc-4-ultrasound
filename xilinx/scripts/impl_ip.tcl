@@ -20,12 +20,12 @@ switch $proj {
             CONFIG.PRIM_SOURCE {No_buffer} \
             CONFIG.PRIM_IN_FREQ {200.000} \
             CONFIG.CLKOUT1_USED {true} \
-            CONFIG.CLK_OUT1_PORT {clk_20} \
-            CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {20.000} \
+            CONFIG.CLK_OUT1_PORT {clk_soc} \
+            CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {50.000} \
             CONFIG.CLKIN1_JITTER_PS {50.0} \
             CONFIG.MMCM_CLKFBOUT_MULT_F {6.000} \
             CONFIG.MMCM_CLKIN1_PERIOD {5.000} \
-            CONFIG.MMCM_CLKOUT1_DIVIDE {60} \
+            CONFIG.MMCM_CLKOUT1_DIVIDE {24} \
             CONFIG.NUM_OUT_CLKS {1} \
             CONFIG.CLKOUT1_JITTER {155.330} \
             CONFIG.CLKOUT1_PHASE_ERROR {89.971} \

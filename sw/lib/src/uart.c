@@ -9,7 +9,9 @@
 #include "util.h"
 #include "config.h"
 
-#define UART_DIVISOR(freq, baud) ((freq) / ((baud) << 4)) // Divisor calculation
+// Round to nearest divisor instead of truncating: at low clock frequencies (e.g. the
+// FPGA's 20MHz) truncation alone causes several % of baud error, enough to corrupt framing.
+#define UART_DIVISOR(freq, baud) (((freq) + ((baud) << 3)) / ((baud) << 4))
 
 void uart_init() {
     const uint16_t divisor = UART_DIVISOR(UART_FREQ, UART_BAUD); // Calculate from provided config

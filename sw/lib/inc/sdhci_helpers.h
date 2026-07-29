@@ -145,12 +145,34 @@ static inline uint32_t sdh_init(void) {
     // Card is selected -- switch from identification speed to full
     // data-transport speed. SD_CLOCK_EN must go back to 0 while the divider
     // is reprogrammed, same rule as the initial clock setup above.
+    // freq_sel=1 -> divisor=ClkPreDiv(2)*2=4 -> 50MHz/4=12.5MHz: the fastest
+    // rate confirmed working end-to-end (incl. ACMD6, below) against real
+    // Genesys2 hardware in sdcard_test.c. The controller's CAPABILITIES
+    // register reports HIGH_SPEED_SUPP=0 (no 50MHz mode implemented) and
+    // freq_sel=0 (25MHz, the Default Speed spec ceiling) failed with a
+    // CMD-line timeout on this board's wiring, so 12.5MHz is the real
+    // practical ceiling here, not just a conservative guess.
     *reg16(SDH_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE;                     // SD_CLOCK_EN=0
-    *reg16(SDH_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE | SDHC_SDCLK_DIV(0); // fastest divider
+    *reg16(SDH_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE | SDHC_SDCLK_DIV(1); // 12.5MHz
     if (sdh_spin_until_set16(SDHC_CLOCK_CTL, SDHC_INTCLK_STABLE)) {
         printf("FAIL: sdh sdclk speedup\n"); return 0;
     }
     *reg16(SDH_BASE, SDHC_CLOCK_CTL) |= SDHC_SDCLK_ENABLE;
+
+    // ACMD6 -- SET_BUS_WIDTH, so the *card* actually drives DAT1-3, then
+    // switch the host to match. Setting only the host's own HOST_CTL
+    // 4BIT_MODE bit (all this used to do) never told the card anything -- it
+    // stays in its post-reset default of 1-bit mode, so it only ever drives
+    // DAT0. A CMD24 write can still look like it "succeeds" that way (its
+    // only card-driven feedback is the DAT0 CRC-status token either way),
+    // but any read needs the card to drive all 4 DAT lines, which it never
+    // does while still in 1-bit mode.
+    r = sdh_cmd(55, rca << 16,
+        SDHC_CRC_CHECK_ENABLE | SDHC_INDEX_CHECK_ENABLE | SDHC_RESP_LEN_48);
+    if (r) { printf("FAIL: CMD55(acmd6)=%x\n", r); return 0; }
+    r = sdh_cmd(6, 2 /* bus width: 4-bit */,
+        SDHC_CRC_CHECK_ENABLE | SDHC_INDEX_CHECK_ENABLE | SDHC_RESP_LEN_48);
+    if (r) { printf("FAIL: ACMD6=%x\n", r); return 0; }
 
     // Switch host controller to 4-bit bus mode
     *reg8(SDH_BASE, SDHC_HOST_CTL) = SDHC_4BIT_MODE;

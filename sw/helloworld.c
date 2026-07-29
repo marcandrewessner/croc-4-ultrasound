@@ -12,6 +12,7 @@
 int main() {
     uart_init();
     printf("Hello World from Croc!\n");
+    printf("NumberCheck=%x\n", 1000);
     uart_write_flush();
     return 0;
 }
