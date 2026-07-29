@@ -1,0 +1,364 @@
+<?xml version="1.0"?>
+<wave_config>
+	<wave_state>
+	</wave_state>
+	<db_ref_list>
+		<db_ref path="/scratch/mwessner/croc-4-ultrasound/xilinx/build/genesys2.croc/croc.hw/hw_1/wave/hw_ila_data_1/hw_ila_data_1.wdb" id="1" type="auto">
+			<top_modules>
+				<top_module name="top">
+				</top_module>
+			</top_modules>
+		</db_ref>
+	</db_ref_list>
+	<WVObjectSize size="58">
+	</WVObjectSize>
+	<wvobject fp_name="dbg_sd_clk_o" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">dbg_sd_clk_o</obj_property>
+		<obj_property name="ObjectShortName">dbg_sd_clk_o</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="dbg_sd_cmd_en_o" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">dbg_sd_cmd_en_o</obj_property>
+		<obj_property name="ObjectShortName">dbg_sd_cmd_en_o</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="dbg_sd_cmd_i" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">dbg_sd_cmd_i</obj_property>
+		<obj_property name="ObjectShortName">dbg_sd_cmd_i</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="dbg_sd_dat_en_o" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">dbg_sd_dat_en_o</obj_property>
+		<obj_property name="ObjectShortName">dbg_sd_dat_en_o</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="dbg_sd_dat_i" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">dbg_sd_dat_i[3:0]</obj_property>
+		<obj_property name="ObjectShortName">dbg_sd_dat_i[3:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_adc_acquisition_top/dbg_adc_clk" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_adc_acquisition_top/dbg_adc_clk</obj_property>
+		<obj_property name="ObjectShortName">dbg_adc_clk</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_adc_acquisition_top/dbg_adc_data" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_adc_acquisition_top/dbg_adc_data[13:0]</obj_property>
+		<obj_property name="ObjectShortName">dbg_adc_data[13:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_adc_acquisition_top/dbg_adc_data_word" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_adc_acquisition_top/dbg_adc_data_word[31:0]</obj_property>
+		<obj_property name="ObjectShortName">dbg_adc_data_word[31:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_adc_acquisition_top/dbg_dma_address" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_adc_acquisition_top/dbg_dma_address[31:0]</obj_property>
+		<obj_property name="ObjectShortName">dbg_dma_address[31:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_adc_acquisition_top/dbg_dma_data" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_adc_acquisition_top/dbg_dma_data[31:0]</obj_property>
+		<obj_property name="ObjectShortName">dbg_dma_data[31:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_adc_acquisition_top/dbg_dma_push" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_adc_acquisition_top/dbg_dma_push</obj_property>
+		<obj_property name="ObjectShortName">dbg_dma_push</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_adc_acquisition_top/dbg_mode" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_adc_acquisition_top/dbg_mode[7:0]</obj_property>
+		<obj_property name="ObjectShortName">dbg_mode[7:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_adc_acquisition_top/dbg_mode_active" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_adc_acquisition_top/dbg_mode_active</obj_property>
+		<obj_property name="ObjectShortName">dbg_mode_active</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_adc_acquisition_top/dbg_status" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_adc_acquisition_top/dbg_status[4:0]</obj_property>
+		<obj_property name="ObjectShortName">dbg_status[4:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_adc_acquisition_top/dbg_write_head" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_adc_acquisition_top/dbg_write_head[29:0]</obj_property>
+		<obj_property name="ObjectShortName">dbg_write_head[29:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_autocmd_wrap/i_cmd_logic/cmd_state_d" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_autocmd_wrap/i_cmd_logic/cmd_state_d[2:0]</obj_property>
+		<obj_property name="ObjectShortName">cmd_state_d[2:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_autocmd_wrap/i_cmd_logic/cmd_state_q" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_autocmd_wrap/i_cmd_logic/cmd_state_q[2:0]</obj_property>
+		<obj_property name="ObjectShortName">cmd_state_q[2:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/buffer_empty" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/buffer_empty</obj_property>
+		<obj_property name="ObjectShortName">buffer_empty</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/buffer_read_ready" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/buffer_read_ready</obj_property>
+		<obj_property name="ObjectShortName">buffer_read_ready</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/buffer_read_valid" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/buffer_read_valid</obj_property>
+		<obj_property name="ObjectShortName">buffer_read_valid</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/buffer_write_ready" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/buffer_write_ready</obj_property>
+		<obj_property name="ObjectShortName">buffer_write_ready</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/buffer_write_valid" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/buffer_write_valid</obj_property>
+		<obj_property name="ObjectShortName">buffer_write_valid</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/busy_state_d" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/busy_state_d[2:0]</obj_property>
+		<obj_property name="ObjectShortName">busy_state_d[2:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/busy_state_q" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/busy_state_q[2:0]</obj_property>
+		<obj_property name="ObjectShortName">busy_state_q[2:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/busy_waiting" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/busy_waiting</obj_property>
+		<obj_property name="ObjectShortName">busy_waiting</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/cmd_data_present_i" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/cmd_data_present_i</obj_property>
+		<obj_property name="ObjectShortName">cmd_data_present_i</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/cmd_started_i" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/cmd_started_i</obj_property>
+		<obj_property name="ObjectShortName">cmd_started_i</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/cmd_transfer_direction_i" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/cmd_transfer_direction_i</obj_property>
+		<obj_property name="ObjectShortName">cmd_transfer_direction_i</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/dat_i" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/dat_i[3:0]</obj_property>
+		<obj_property name="ObjectShortName">dat_i[3:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/dat_state_d" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/dat_state_d[1:0]</obj_property>
+		<obj_property name="ObjectShortName">dat_state_d[1:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/dat_state_q" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/dat_state_q[1:0]</obj_property>
+		<obj_property name="ObjectShortName">dat_state_q[1:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/accepts_data_port_chunk" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/accepts_data_port_chunk</obj_property>
+		<obj_property name="ObjectShortName">accepts_data_port_chunk</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/current_word_counter_d" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/current_word_counter_d[9:0]</obj_property>
+		<obj_property name="ObjectShortName">current_word_counter_d[9:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/current_word_counter_q" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/current_word_counter_q[9:0]</obj_property>
+		<obj_property name="ObjectShortName">current_word_counter_q[9:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/enable_reg" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/enable_reg</obj_property>
+		<obj_property name="ObjectShortName">enable_reg</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/read_operation_i" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/read_operation_i</obj_property>
+		<obj_property name="ObjectShortName">read_operation_i</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/reg_empty" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/reg_empty</obj_property>
+		<obj_property name="ObjectShortName">reg_empty</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/reg_full" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/reg_full</obj_property>
+		<obj_property name="ObjectShortName">reg_full</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/reg_length" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/reg_length[8:0]</obj_property>
+		<obj_property name="ObjectShortName">reg_length[8:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/reg_pop" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/reg_pop</obj_property>
+		<obj_property name="ObjectShortName">reg_pop</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/reg_push" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/reg_push</obj_property>
+		<obj_property name="ObjectShortName">reg_push</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/single_block_done_d" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/single_block_done_d</obj_property>
+		<obj_property name="ObjectShortName">single_block_done_d</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/single_block_done_q" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/single_block_done_q</obj_property>
+		<obj_property name="ObjectShortName">single_block_done_q</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/write_operation_i" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/write_operation_i</obj_property>
+		<obj_property name="ObjectShortName">write_operation_i</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/pause_sd_clk_read" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/pause_sd_clk_read</obj_property>
+		<obj_property name="ObjectShortName">pause_sd_clk_read</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/pause_sd_clk_write" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/pause_sd_clk_write</obj_property>
+		<obj_property name="ObjectShortName">pause_sd_clk_write</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/read_state_d" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/read_state_d[2:0]</obj_property>
+		<obj_property name="ObjectShortName">read_state_d[2:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/read_state_q" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/read_state_q[2:0]</obj_property>
+		<obj_property name="ObjectShortName">read_state_q[2:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/read_waiting" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/read_waiting</obj_property>
+		<obj_property name="ObjectShortName">read_waiting</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/run_timeout_clock" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/run_timeout_clock</obj_property>
+		<obj_property name="ObjectShortName">run_timeout_clock</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/sd_cmd_done_i" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/sd_cmd_done_i</obj_property>
+		<obj_property name="ObjectShortName">sd_cmd_done_i</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/sd_rsp_done_i" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/sd_rsp_done_i</obj_property>
+		<obj_property name="ObjectShortName">sd_rsp_done_i</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/timeout_elapsed" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/timeout_elapsed</obj_property>
+		<obj_property name="ObjectShortName">timeout_elapsed</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/write_state_d" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/write_state_d[2:0]</obj_property>
+		<obj_property name="ObjectShortName">write_state_d[2:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/write_state_q" type="array" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/write_state_q[2:0]</obj_property>
+		<obj_property name="ObjectShortName">write_state_q[2:0]</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/write_waiting" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/write_waiting</obj_property>
+		<obj_property name="ObjectShortName">write_waiting</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="vio_gpio" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">vio_gpio</obj_property>
+		<obj_property name="ObjectShortName">vio_gpio</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+	<wvobject fp_name="vio_reset" type="logic" db_ref_id="1">
+		<obj_property name="ElementShortName">vio_reset</obj_property>
+		<obj_property name="ObjectShortName">vio_reset</obj_property>
+		<obj_property name="DisplayName">FullPathName</obj_property>
+		<obj_property name="Radix">HEXRADIX</obj_property>
+	</wvobject>
+</wave_config>
+

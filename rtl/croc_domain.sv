@@ -563,10 +563,10 @@ module croc_domain import croc_pkg::*; #(
   // ADC Acquisition
   // ----------------
   adc_acquisition_top #(
-    .mgr_obi_req_t,
-    .mgr_obi_rsp_t,
-    .sbr_obi_req_t,
-    .sbr_obi_rsp_t
+    .mgr_obi_req_t  ( mgr_obi_req_t ),
+    .mgr_obi_rsp_t  ( mgr_obi_rsp_t ),
+    .sbr_obi_req_t  ( sbr_obi_req_t ),
+    .sbr_obi_rsp_t  ( sbr_obi_rsp_t )
   ) i_adc_acquisition_top (
     .clk_i,
     .rst_ni,

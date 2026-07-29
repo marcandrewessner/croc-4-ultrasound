@@ -1,15 +1,18 @@
 // ADC acquisition showcase -- single-shot capture, no SD card.
 //
 // Simplest possible use of the ADC acquisition peripheral: capture one
-// frame into SRAM Bank2 (F0) and dump it over UART. No SD card / SDHCI
-// involved at all -- see sdcard_acquisition_Nx.c for that.
+// frame that spans *both* SRAM banks (F0 start = beginning of Bank2, F0 end
+// = end of Bank3) and dump the first 50 words (100 samples) over UART. No
+// SD card / SDHCI involved at all -- see sdcard_acquisition_Nx.c for that.
 //
 // Flow:
 //   1. Arm SINGLE_ACQ_F0: configure the F0 frame span, reset the write
 //      head, enable the mode. Hardware fills F0 word-by-word as ADC
 //      samples arrive and autonomously reverts CONF.MODE to IDLE the
 //      instant the frame is full -- no software polling loop needed for
-//      that part.
+//      that part. The RTL only compares the write head against
+//      F0_END_ADDR, it has no concept of a bank boundary, so a single F0
+//      span is free to run straight through Bank2 into Bank3.
 //   2. Wait for the completion interrupt (interrupt_frame_full_o, wired to
 //      ADC_ACQ_INTERRUPT) instead of polling STATUS -- this mode supports
 //      both, this example showcases the interrupt path. The line is level-
@@ -84,6 +87,7 @@ static void run_acquisition(void) {
     while (!frame_ready) { }
 }
 
+// Dumps the first DUMP_WORDS words over UART.
 static void dump_frame(void) {
     printf("BEGIN DUMP\n");
     for (uint32_t i = 0; i < 3; i++) {
@@ -93,6 +97,37 @@ static void dump_frame(void) {
     printf("END DUMP\n");
 }
 
+// Checks every sample of the whole acquired frame (both banks, N_WORDS
+// words) against a free-running 14-bit counter: seeded from the very first
+// sample, then expected to count up by one (wrapping mod 2^14) for every
+// sample after. Only mismatches are printed, to avoid flooding UART with
+// all 2*N_WORDS samples.
+static void check_frame(void) {
+    uint32_t expected      = 0;
+    int      have_expected = 0;
+    uint32_t errors        = 0;
+
+    for (uint32_t i = 0; i < N_WORDS; i++) {
+        uint32_t w  = *reg32(F0_START_ADDR_BYTE, 4u * i);
+        uint32_t samples[2] = { lo14(w), hi14(w) };
+
+        for (uint32_t s = 0; s < 2u; s++) {
+            if (!have_expected) {
+                expected      = samples[s];
+                have_expected = 1;
+            } else if (samples[s] != expected) {
+                printf("MISMATCH word=%x sample=%x got=%x expected=%x\n",
+                       i, s, samples[s], expected);
+                errors++;
+            }
+            expected = (expected + 1u) & 0x3FFFu;
+        }
+    }
+
+    if (errors) printf("COUNTER CHECK FAILED: %x mismatches\n", errors);
+    else        printf("COUNTER CHECK OK\n");
+}
+
 int main(void) {
     uart_init();
     printf("acquisition_single\n");
@@ -100,7 +135,6 @@ int main(void) {
     set_interrupt_enable(1, ADC_ACQ_INTERRUPT);
     set_global_irq_enable(1);
 
-    // --- run 1 ---
     run_acquisition();
     printf("F0 full\n");
     dump_frame();

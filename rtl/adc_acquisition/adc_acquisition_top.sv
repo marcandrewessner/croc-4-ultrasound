@@ -119,6 +119,26 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
   assign adc_cdc_overflow = adc_pack_valid && !adc_cdc_src_ready;
 
   //////////////////////////////////////
+  // ILA debug taps (Xilinx synthesis only; ignored elsewhere)
+  //////////////////////////////////////
+  // adc_input_signals.clk is a struct field, not a standalone net -- Vivado
+  // needs an actual net to hang a MARK_DEBUG probe off of, hence the mirror
+  // signal instead of tagging the field directly. Sampled by the ILA's own
+  // capture clock (soc_clk, see xilinx/scripts/common.tcl insert_ilas), so
+  // this just shows adc_clk's edges relative to soc_clk, not a real
+  // clock-domain probe.
+  (* dont_touch = "yes" *) (* mark_debug = "true" *) logic dbg_adc_clk;
+  assign dbg_adc_clk = adc_input_signals.clk;
+
+  // Trigger-friendly probe: high for the whole time CONF.MODE != IDLE, i.e.
+  // exactly the window an acquisition is running. Set the ILA trigger
+  // condition to this probe's rising edge to start capture the instant a
+  // mode is armed, instead of building a multi-bit compare against
+  // CONF.MODE by hand in the Hardware Manager.
+  (* dont_touch = "yes" *) (* mark_debug = "true" *) logic dbg_mode_active;
+  assign dbg_mode_active = reg2hw.CONF.MODE.value != adc_acquisition_reg_pkg::adc_mode__IDLE;
+
+  //////////////////////////////////////
   // SDCard copy controller           //
   //////////////////////////////////////
   logic        sdcard_done_set;
@@ -544,6 +564,42 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
     adc_data_write_req_o.a.aid        = '0;
     adc_data_write_req_o.a.a_optional = '0;
   end
+
+  //////////////////////////////////////
+  // ILA debug taps (Xilinx synthesis only; ignored elsewhere), continued
+  //////////////////////////////////////
+  // dma_push qualifies dma_address/dma_data: both read as 'x (default in the
+  // control-logic case statement) whenever a write isn't actually happening
+  // this cycle, so without this the bus values are meaningless noise.
+  (* dont_touch = "yes" *) (* mark_debug = "true" *) logic        dbg_dma_push;
+  (* dont_touch = "yes" *) (* mark_debug = "true" *) logic [31:0] dbg_dma_address;
+  (* dont_touch = "yes" *) (* mark_debug = "true" *) logic [31:0] dbg_dma_data;
+  assign dbg_dma_push    = dma_push;
+  assign dbg_dma_address = dma_address;
+  assign dbg_dma_data    = dma_data;
+
+  // Raw ADC sample (ADC clock domain, mirrored) and the packed 32-bit word
+  // (system clock domain) that dma_data above is ultimately sourced from.
+  (* dont_touch = "yes" *) (* mark_debug = "true" *) logic [13:0] dbg_adc_data;
+  (* dont_touch = "yes" *) (* mark_debug = "true" *) logic [31:0] dbg_adc_data_word;
+  assign dbg_adc_data      = adc_input_signals.data;
+  assign dbg_adc_data_word = adc_data_word;
+
+  // Write head pointer (word address) and full mode encoding, to correlate
+  // capture progress and control-flow state against the buses above.
+  (* dont_touch = "yes" *) (* mark_debug = "true" *) logic [29:0] dbg_write_head;
+  (* dont_touch = "yes" *) (* mark_debug = "true" *) logic [7:0]  dbg_mode;
+  assign dbg_write_head = reg2hw.WRITE_HEAD.WORD_ADDRESS.value;
+  assign dbg_mode       = reg2hw.CONF.MODE.value;
+
+  // STATUS flags packed into one bus: {SDCARD_OVERFLOW, SDCARD_DONE,
+  // ADC_OVERFLOW, F1_FULL, F0_FULL}.
+  (* dont_touch = "yes" *) (* mark_debug = "true" *) logic [4:0] dbg_status;
+  assign dbg_status = {reg2hw.STATUS.SDCARD_OVERFLOW.value,
+                       reg2hw.STATUS.SDCARD_DONE.value,
+                       reg2hw.STATUS.ADC_OVERFLOW.value,
+                       reg2hw.STATUS.F1_FULL.value,
+                       reg2hw.STATUS.F0_FULL.value};
 
   //////////////////////////////////////
   // Interrupt                        //

@@ -23,17 +23,17 @@ module dat_wrap #(
   input  logic rst_ni,
   input  logic clear_i,
 
-  input  logic [3:0] dat_i,
+  (* dont_touch = "yes", mark_debug = "true" *) input  logic [3:0] dat_i,
   output logic       dat_en_o,
   output logic [3:0] dat_o,
 
-  input  logic cmd_started_i,
+  (* dont_touch = "yes", mark_debug = "true" *) input  logic cmd_started_i,
   input  logic cmd_needs_busy_i,
-  input  logic cmd_data_present_i,
-  input  logic cmd_transfer_direction_i,
+  (* dont_touch = "yes", mark_debug = "true" *) input  logic cmd_data_present_i,
+  (* dont_touch = "yes", mark_debug = "true" *) input  logic cmd_transfer_direction_i,
 
-  input  logic sd_cmd_done_i,
-  input  logic sd_rsp_done_i,
+  (* dont_touch = "yes", mark_debug = "true" *) input  logic sd_cmd_done_i,
+  (* dont_touch = "yes", mark_debug = "true" *) input  logic sd_rsp_done_i,
 
   output logic sd_busy_o,
   output logic request_cmd12_o,
@@ -57,11 +57,12 @@ module dat_wrap #(
   output `writable_reg_t([15:0]) block_count_o
 );
 
+  (* dont_touch = "yes", mark_debug = "true" *)
   logic buffer_write_ready, buffer_write_valid, buffer_read_ready, buffer_read_valid, buffer_empty;
   logic [31:0] buffer_write_data, buffer_read_data;
   logic start_read, read_valid, read_done, read_crc_err, read_end_bit_err;
   logic write_done, write_crc_timeout;
-  logic timeout_elapsed;
+  (* dont_touch = "yes", mark_debug = "true" *) logic timeout_elapsed;
 
   logic block_count_limited;
   assign block_count_limited = !reg2hw_i.transfer_mode.multi_single_block_select.q ||
@@ -106,16 +107,20 @@ module dat_wrap #(
     DONE_WRITING
   } write_state_e;
 
-  dat_state_e dat_state_q, dat_state_d;
+  // Debug: CMD17 read never leaves the card's DAT lines idle-high on real
+  // hardware (frozen for the whole software timeout) despite simulation and
+  // the card's own R1 status both looking healthy -- trace which FSM(s) get
+  // stuck and whether the SD clock itself is being paused.
+  (* dont_touch = "yes", mark_debug = "true" *) dat_state_e dat_state_q, dat_state_d;
   `FFARNC (dat_state_q, dat_state_d, clear_i, READY, clk_i, rst_ni);
 
-  busy_state_e busy_state_q, busy_state_d;
+  (* dont_touch = "yes", mark_debug = "true" *) busy_state_e busy_state_q, busy_state_d;
   `FFARNC (busy_state_q, busy_state_d, clear_i, BUSY_WAIT_FOR_CMD, clk_i, rst_ni);
 
-  read_state_e read_state_q, read_state_d;
+  (* dont_touch = "yes", mark_debug = "true" *) read_state_e read_state_q, read_state_d;
   `FFARNC (read_state_q, read_state_d, clear_i, WAIT_FOR_CMD, clk_i, rst_ni);
 
-  write_state_e write_state_q, write_state_d;
+  (* dont_touch = "yes", mark_debug = "true" *) write_state_e write_state_q, write_state_d;
   `FFARNC (write_state_q, write_state_d, clear_i, WAIT_FOR_RSP, clk_i, rst_ni);
 
   always_comb begin : main_fsm
@@ -341,16 +346,16 @@ module dat_wrap #(
   assign words_per_block = (effective_block_size + MaxBlockBitSize'(3)) >> 2;
 
 
-  logic busy_waiting;
-  logic read_waiting;
-  logic write_waiting;
-  logic run_timeout_clock;
+  (* dont_touch = "yes", mark_debug = "true" *) logic busy_waiting;
+  (* dont_touch = "yes", mark_debug = "true" *) logic read_waiting;
+  (* dont_touch = "yes", mark_debug = "true" *) logic write_waiting;
+  (* dont_touch = "yes", mark_debug = "true" *) logic run_timeout_clock;
 
   assign run_timeout_clock = busy_waiting | read_waiting | write_waiting;
 
   logic start_write, write_requests_next_word, write_crc_err, write_end_bit_err;
   logic [31:0] write_data, read_data;
-  logic pause_sd_clk_read, pause_sd_clk_write;
+  (* dont_touch = "yes", mark_debug = "true" *) logic pause_sd_clk_read, pause_sd_clk_write;
 
   assign pause_sd_clk_o = pause_sd_clk_read || pause_sd_clk_write;
 

@@ -19,7 +19,10 @@
 #define USER_ROM_BASE_ADDR  0x20000000
 
 // Frequencies
-#define TB_FREQUENCY        100000000
+// 50MHz on both simulation (rtl/test/tb_croc_pkg.sv ClkPeriodSys) and the
+// genesys2 FPGA (xilinx/scripts/impl_ip.tcl clkwiz clk_soc) -- kept in sync
+// deliberately, so there's exactly one UART_FREQ for both targets.
+#define TB_FREQUENCY        50000000
 #define TB_BAUDRATE         115200
 
 // Peripheral configs

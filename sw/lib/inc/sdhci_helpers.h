@@ -328,8 +328,15 @@ static inline uint32_t sdh_init(void) {
     // Card is configured -- switch from identification speed to full
     // data-transport speed. SD_CLOCK_EN must go back to 0 while the divider
     // is reprogrammed, same rule as the initial clock setup above.
+    // freq_sel=1 -> divisor=ClkPreDiv(2)*2=4 -> 50MHz/4=12.5MHz: the fastest
+    // rate confirmed working end-to-end (incl. ACMD6, below) against real
+    // Genesys2 hardware in sdcard_test.c. The controller's CAPABILITIES
+    // register reports HIGH_SPEED_SUPP=0 (no 50MHz mode implemented) and
+    // freq_sel=0 (25MHz, the Default Speed spec ceiling) failed with a
+    // CMD-line timeout on this board's wiring, so 12.5MHz is the real
+    // practical ceiling here, not just a conservative guess.
     *reg16(SDH_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE;                     // SD_CLOCK_EN=0
-    *reg16(SDH_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE | SDHC_SDCLK_DIV(0); // fastest divider
+    *reg16(SDH_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE | SDHC_SDCLK_DIV(1); // 12.5MHz
     if (sdh_spin_until_set16(SDHC_CLOCK_CTL, SDHC_INTCLK_STABLE)) {
         printf("FAIL: sdh sdclk speedup\n"); return 0;
     }
