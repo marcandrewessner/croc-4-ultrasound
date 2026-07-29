@@ -7,10 +7,10 @@
 <dl class="node-info">
     <dt>Absolute Address:</dt><dd id="_AbsAddr" class="address"></dd>
     <div id="_AbsAddrDetails"></div>
-    <dt>Base Offset:</dt><dd class="address">0x28</dd>
+    <dt>Base Offset:</dt><dd class="address">0x30</dd>
     <dt>Size:</dt><dd class="address">0x4</dd>
     
-    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L164" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
+    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/worktree-sdcard-pulse-mode/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L204" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
     
 </dl>
 <h2>Description</h2>
@@ -72,6 +72,6 @@
     <a class="headerlink" href="#BLOCK_UNITS.desc" title="Permalink to this headline"></a>
 </h3>
 <div id="_Content.BLOCK_UNITS.desc">
-<p>1 = block addressing (SDHC/SDXC-style): SDCARD_BLOCK_ADDR is a raw block number, advanced by 1 per block. 0 = byte addressing (standard-capacity-style): SDCARD_BLOCK_ADDR is a byte address, advanced by this frame's byte count per block.</p>
+<p>1 = block addressing (SDHC/SDXC-style): SDCARD_BLOCK_ADDR is a raw block number, advanced by SDCARD_BLOCK_COUNT per completed session. 0 = byte addressing (standard-capacity-style): SDCARD_BLOCK_ADDR is a byte address, advanced by the frame's byte count per completed session.</p>
 </div>
 </div>

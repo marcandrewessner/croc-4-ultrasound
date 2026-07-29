@@ -10,12 +10,12 @@
     <dt>Base Offset:</dt><dd class="address">0x24</dd>
     <dt>Size:</dt><dd class="address">0x4</dd>
     
-    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/main/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L153" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
+    <dt>Source:</dt><dd><a href="https://github.com/marcandrewessner/croc-4-ultrasound/blob/worktree-sdcard-pulse-mode/rtl/adc_acquisition/reg/adc_acquisition_reg_definition.rdl#L171" target="_blank">adc_acquisition_reg_definition.rdl</a></dd>
     
 </dl>
 <h2>Description</h2>
 <div id="_Content.desc">
-<p>Number of frames the ADC-fill side may dispatch to the HW copy engine in ACQ_SDCARD mode before it stops raising Fx_FULL, independent of how long dispatched jobs take to physically finish. Each frame is written with its own CMD24 (WRITE_BLOCK); this is the only place the total frame count is configured.</p>
+<p>Number of frames the ADC-fill side may dispatch to the HW copy engine in SDCARD_CONTINUOUS mode before it stops raising Fx_FULL, independent of how long dispatched jobs take to physically finish. A frame is one whole SRAM bank, streamed out as one CMD25 session of SDCARD_BLOCK_COUNT blocks; this is the only place the total frame count is configured. Ignored in SDCARD_PULSE mode, whose capture length is fixed at both banks.</p>
 </div>
 
 <h2>Contents</h2>

@@ -181,7 +181,7 @@ module tb_croc_soc #(
   //////////////////////////////////
   //  ADC Simulation  //
   //////////////////////////////////
-  localparam int ADC_SAMPLING_FREQ_MHZ = 8;
+  localparam int ADC_SAMPLING_FREQ_MHZ = 9;
   initial begin : tb_adc_sim_clock
     // init the data
     adc_clk_o = 0;

@@ -11,7 +11,12 @@
 `include "common_cells/registers.svh"
 
 module dat_write #(
-  parameter int MaxBlockBitSize = 10
+  parameter int MaxBlockBitSize = 10,
+  // How many SD clocks past the nominal N_CRC=2 turnaround the card is still
+  // allowed to begin its CRC-status token before the transfer is called a
+  // timeout. See STATUS_START_BIT for why a fixed single-cycle sample is not
+  // enough. 0 restores the original zero-tolerance behaviour.
+  parameter int StatusStartWindow = 8
 ) (
   input  logic       clk_i,
   input  logic       sd_clk_en_p_i,
@@ -77,7 +82,13 @@ module dat_write #(
 
       BUS_SWITCH:       if (counter_q + 1 == 2) dat_tx_state_d = STATUS_START_BIT;
 
-      STATUS_START_BIT: dat_tx_state_d = STATUS;
+      // Search for the card's CRC-status start bit instead of assuming it is
+      // already there. counter_q carries 2 in from BUS_SWITCH, so the window
+      // ends at 2 + StatusStartWindow. Leaving on either outcome keeps the
+      // downstream state flow (STATUS -> STATUS_END_BIT -> BUSY -> DONE)
+      // identical to before; a genuine no-show is reported via data_timeout.
+      STATUS_START_BIT: if (dat0_i == '0 || counter_q + 1 == 2 + StatusStartWindow)
+                          dat_tx_state_d = STATUS;
       STATUS:           if (counter_q + 1 == 3) dat_tx_state_d = STATUS_END_BIT;
       STATUS_END_BIT:   dat_tx_state_d = BUSY;
 
@@ -203,7 +214,42 @@ module dat_write #(
 
       BUS_SWITCH: counter_d = counter_q + 1;
 
-      STATUS_START_BIT: if (dat0_i != '0) data_timeout_d = '1;
+      // The card answers a written block by pulling DAT0 low to start its
+      // 5-bit CRC-status token. The SD spec allows it two clocks of turnaround
+      // (N_CRC), which BUS_SWITCH waits out -- but this state used to sample
+      // dat0_i exactly once at that instant and call anything else a timeout,
+      // leaving zero margin for a card that starts even one clock later or for
+      // pad/board round-trip delay at 50 MHz.
+      //
+      // Against this repo's sdModel.v the token really does start ~1.15 SD
+      // clocks late (measured: sample at 8868260 ns reads 1, DAT0 falls at
+      // 8868283 ns), so the one-shot sample latched data_timeout on *every*
+      // block, and mis-sampled the rest of the token with it -- status_q came
+      // out 001 instead of 010 and end_bit_err set too, because the whole
+      // 5-bit token was read one clock early.
+      //
+      // Under single-block CMD24 that was survivable: dat_wrap.sv's
+      // TIMEOUT_WRITING detour still reached DONE_WRITING and the block had
+      // already landed, so it only left a stale EINTR_STATUS bit behind
+      // (DATAPATH.md §1c Bug 2). Under a multi-block CMD25 session it is
+      // fatal -- TIMEOUT_WRITING bypasses DONE_WRITING_BLOCK, which is the
+      // only state that loops back for the next block, so the session
+      // silently ends after block 1 and the SDHCI buffer stops draining.
+      //
+      // So: count SD clocks while the line stays high and only declare a
+      // timeout if the start bit never arrives within StatusStartWindow.
+      // Note the counter handling: STATUS counts the token's 3 status bits
+      // starting from 0, so the counter must be handed over clean. Increment
+      // it only while still searching; on the cycle this state is left (same
+      // condition as the transition above) fall back to the default
+      // counter_d = '0.
+      STATUS_START_BIT: begin
+        if (dat0_i == '0 || counter_q + 1 == 2 + StatusStartWindow) begin
+          if (dat0_i != '0) data_timeout_d = '1; // window expired, no start bit
+        end else begin
+          counter_d = counter_q + 1;
+        end
+      end
       STATUS: begin
         counter_d = counter_q + 1;
         status_d = { status_q[1:0], dat0_i };

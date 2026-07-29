@@ -18,13 +18,11 @@
 //      both, this example showcases the interrupt path. The line is level-
 //      sensitive with no hardware ack, so the ISR clears the STATUS flags
 //      that raised it; see croc_interrupt_handler below.
-//   3. Dump the first 50 captured words (100 samples) over UART: each
-//      32-bit word packs two consecutive 14-bit ADC samples,
-//      {2'b00, sample[2i+1], 2'b00, sample[2i]}.
-//   4. Separately, check *every* sample in the whole acquired frame (both
-//      banks, 1024 words / 2048 samples) against a free-running 14-bit
-//      counter seeded from the first sample captured, incrementing (and
-//      wrapping mod 2^14) by one per sample. Only mismatches are printed.
+//   3. Dump the captured words: each 32-bit word packs two consecutive
+//      14-bit ADC samples, {2'b00, sample[2i+1], 2'b00, sample[2i]}.
+//   4. Re-arm once more to show the peripheral isn't one-shot -- CONF.MODE
+//      reverting to IDLE only stops the *current* capture, SINGLE_ACQ_F0
+//      can be written again right away.
 
 #include "uart.h"
 #include "print.h"
@@ -32,14 +30,14 @@
 #include "config.h"
 #include "adc_acquisition.h"
 
-// Span Bank2 (F0) and Bank3 (F1) back-to-back as a single F0 frame: 1024
-// words = 4 KiB = 2048 ADC samples, i.e. both banks filled in one shot.
+// Fill the whole of Bank2: 512 words = 2 KiB = 1024 ADC samples, the largest
+// frame a single bank can hold (see ADC_ACQ_BANK_WORDS in adc_acquisition.h
+// for where that number comes from).
 #define F0_START_ADDR_BYTE  ADC_ACQ_F0_BASE
-#define N_WORDS             (2u * ADC_ACQ_BANK_WORDS)
+#define N_WORDS             ADC_ACQ_BANK_WORDS
 #define F0_END_ADDR_BYTE    ADC_ACQ_FRAME_END(F0_START_ADDR_BYTE, N_WORDS)
 
-// How much of the captured frame to dump/check over UART.
-#define DUMP_WORDS  50u
+ADC_ACQ_ASSERT_FRAME_FITS(N_WORDS);
 
 static inline uint32_t lo14(uint32_t w) { return w & 0x3FFFu; }
 static inline uint32_t hi14(uint32_t w) { return (w >> 16) & 0x3FFFu; }
@@ -92,7 +90,7 @@ static void run_acquisition(void) {
 // Dumps the first DUMP_WORDS words over UART.
 static void dump_frame(void) {
     printf("BEGIN DUMP\n");
-    for (uint32_t i = 0; i < DUMP_WORDS; i++) {
+    for (uint32_t i = 0; i < 3; i++) {
         uint32_t w = *reg32(F0_START_ADDR_BYTE, 4u * i);
         printf("%x: lo=%x hi=%x\n", i, lo14(w), hi14(w));
     }
@@ -140,7 +138,11 @@ int main(void) {
     run_acquisition();
     printf("F0 full\n");
     dump_frame();
-    check_frame();
+
+    // --- run 2: same peripheral, re-armed -------------------------------
+    run_acquisition();
+    printf("F0 full (re-armed)\n");
+    dump_frame();
 
     // The ISR clears ADC_OVERFLOW along with everything else, so the only
     // place it is still visible is the STATUS snapshot it took.

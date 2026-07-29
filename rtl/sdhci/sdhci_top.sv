@@ -103,8 +103,26 @@ module sdhci_top #(
     .reg2hw    (reg2hw_orig),
     .hw2reg,
     .clear_i   (sd_clear),
-    .buffer_data_port_read_ready_i  (AllowNoncompliantBufferSizes ? buffer_data_port_read_ready  : 1'b1),
-    .buffer_data_port_write_ready_i (AllowNoncompliantBufferSizes ? buffer_data_port_write_ready : 1'b1),
+    // Routed unconditionally, not gated on AllowNoncompliantBufferSizes.
+    // These drive reg_ready (sdhci_reg_top.sv), which the OBI bridge turns
+    // into the bus grant (sdhci_obi_to_reg.sv: gnt = req & reg_rsp.ready), so
+    // a BUFFER_DATA_PORT access that the DAT buffer cannot take right now
+    // stalls the requester instead of completing. Previously these were tied
+    // to 1'b1 for compliant buffer sizes, on the assumption that a host only
+    // ever writes one block after BUFFER_WRITE_READY -- true for software,
+    // but not for the ADC copy engine, which streams a whole multi-block
+    // CMD25 session (adc_acquisition_sdcard_controller.sv) and does fill the
+    // buffer. With the ready tied high, dat_buffer.sv still gated its
+    // internal reg_push on the same signal, so those words were silently
+    // dropped rather than deferred.
+    //
+    // Note this is deliberately not done by setting AllowNoncompliantBufferSizes,
+    // which reaches the same signal but also disables the buffer-size
+    // assertions and flips buffer_write_enable_o from has_block_space to
+    // !reg_full, weakening BUFFER_WRITE_READY from "room for a whole block"
+    // to "room for one word".
+    .buffer_data_port_read_ready_i  (buffer_data_port_read_ready),
+    .buffer_data_port_write_ready_i (buffer_data_port_write_ready),
     .devmode_i (1'b1)
   );
 

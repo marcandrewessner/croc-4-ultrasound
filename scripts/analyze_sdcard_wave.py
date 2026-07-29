@@ -24,6 +24,7 @@ CTRL = "tb_croc_soc.i_croc_soc.i_croc.i_adc_acquisition_top.i_sdcard_ctrl."
 TOP = "tb_croc_soc.i_croc_soc.i_croc.i_adc_acquisition_top."
 SDH = "tb_croc_soc.i_croc_soc.i_croc.i_sdhci_top_obi.i_sdhci_impl."
 MOD = "tb_croc_soc.i_sd_card.i_model."
+CARD = "tb_croc_soc.i_sd_card."  # pad-level view, outside the model
 
 # sdModel.v `ifdef SYSTEMVERILOG branch (the one this build compiles) --
 # fallback only; enum names are read out of the FST when it carries them.
@@ -87,6 +88,31 @@ def card_state(cs, t):
     return CARD_STATES.get((int(at(cs, t) or 0) >> 9) & 0xF, "?")
 
 
+def wire_commands(w, t_from):
+    """[(time_ps, index, argument)] for every command driven on the CMD pad.
+
+    Ground truth: the card's own sampling point, `cmd_i` on each `sd_clk_i`
+    posedge while the host drives (`cmd_en_i`). 48 bits = start, direction,
+    6-bit index, 32-bit argument, CRC, end bit.
+    """
+    clk = w.tr(CARD + "sd_clk_i")
+    cmd = w.tr(CARD + "cmd_i")
+    en = w.tr(CARD + "cmd_en_i")
+
+    bits, start, out = [], None, []
+    for t, v in clk:
+        if t < t_from or int(v) != 1 or not int(at(en, t) or 0):
+            continue
+        if not bits:
+            start = t
+        bits.append(int(at(cmd, t)))
+        if len(bits) == 48:
+            out.append((start, int("".join(map(str, bits[2:8])), 2),
+                        int("".join(map(str, bits[8:40])), 2)))
+            bits = []
+    return out
+
+
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else "verilator/croc.fst"
     w = Wave(path)
@@ -96,7 +122,7 @@ def main():
     data_names = w.enum(MOD + "dataState", DATA_STATES)
 
     ce = w.tr(CTRL + "state_q")
-    arg = w.tr(CTRL + "cmd24_argument")
+    arg = w.tr(CTRL + "cmd25_argument")
     blk = w.tr(TOP + "reg2hw.SDCARD_BLOCK_ADDR.BLOCK_ADDR.value")
     dat = w.tr(SDH + "i_dat_wrap.dat_i")  # == sd_dat_i == PRESENT_STATE[23:20]
     tc = w.tr(SDH + "i_dat_wrap.reg2hw_i.normal_interrupt_status.transfer_complete.q")
@@ -104,10 +130,9 @@ def main():
     ds = w.tr(MOD + "dataState")
     ba = w.tr(MOD + "BlockAddr")
     fwc = w.tr(MOD + "flash_write_cnt")
-    incmd = w.tr(MOD + "inCmd")
 
     idle = ce_val["CE_IDLE"]
-    submit = ce_val["CE_SUBMIT_CMD24"]
+    submit = ce_val["CE_SUBMIT_CMD25"]
     done = ce_val["CE_DONE"]
     overflow = ce_val["CE_OVERFLOW"]
 
@@ -119,7 +144,7 @@ def main():
             jobs.append({"start": t})
         if jobs:
             if v == submit:
-                jobs[-1].setdefault("cmd24", t)
+                jobs[-1].setdefault("cmd25", t)
             elif v == done:
                 jobs[-1]["done"] = t
             elif v == overflow:
@@ -132,15 +157,15 @@ def main():
     for i, j in enumerate(jobs, 1):
         print(f"\n--- job {i} ---")
         print(f"  start           cyc {cyc(j['start']):>8}")
-        if "cmd24" in j:
-            t = j["cmd24"]
-            print(f"  CMD24 issued    cyc {cyc(t):>8}  arg={at(arg, t)}  "
+        if "cmd25" in j:
+            t = j["cmd25"]
+            print(f"  CMD25 issued    cyc {cyc(t):>8}  arg={at(arg, t)}  "
                   f"(SDCARD_BLOCK_ADDR={at(blk, t)})")
             print(f"     card: {card_state(cs, t):<5} "
                   f"dataState={data_names[int(at(ds, t))]:<11} "
                   f"flash_write_cnt={at(fwc, t)}  BlockAddr={at(ba, t)}")
             if card_state(cs, t) != "TRAN":
-                print("     >> card NOT in TRAN: sdModel.v's `24:` handler will "
+                print("     >> card NOT in TRAN: sdModel.v's `25:` handler will "
                       "silently drop this command")
         for k in ("done", "overflow"):
             if k in j:
@@ -180,31 +205,33 @@ def main():
 
     flashes = sum(1 for t, v in ds
                   if t0 <= t <= t1 and data_names[int(v)] == "WRITE_FLASH")
-    print(f"\n  WRITE_FLASH episodes: {flashes}   (expected: one per job, "
-          f"{len(jobs)} job(s) ran)")
-    if flashes < len(jobs):
-        print("  >> fewer commits than jobs: some block(s) never reached flash")
+    # One per *block*, not per job: a job is now a whole CMD25 session of
+    # SDCARD_BLOCK_COUNT blocks (DATAPATH.md §0).
+    blocks = int(at(w.tr(TOP + "reg2hw.SDCARD_BLOCK_COUNT.BLOCK_COUNT.value"),
+                    t0) or 1)
+    print(f"\n  WRITE_FLASH episodes: {flashes}   (expected: {blocks} per job "
+          f"x {len(jobs)} job(s) ran = {blocks * len(jobs)})")
+    if flashes < blocks * len(jobs):
+        print("  >> fewer commits than blocks sent: some block(s) never reached "
+              "flash -- check section 3 for what the card was actually told")
 
-    # ------------------------------------------------- CMD24s the card saw
+    # ------------------------------------------ commands actually on the wire
     print()
     print("=" * 76)
-    print("3. CMD24s as decoded from the model's inCmd shift register")
+    print("3. Commands as they appear on the CMD line (host -> card)")
     print("=" * 76)
-    seen = set()
-    for t, v in incmd:
-        if t < t0:
-            continue
-        v = int(v)
-        if (v >> 40) & 0x3F != 24:
-            continue
-        a = (v >> 8) & 0xFFFFFFFF
+    print("   Decoded from the pads, not from any host-side register: what the")
+    print("   copy engine wrote into COMMAND and what SDHCI put on the bus are")
+    print("   not the same thing (DATAPATH.md §0d -- a stale mux turned every")
+    print("   post-AUTO_CMD12 command into another CMD12).")
+    print("   Do not use the model's inCmd for this: it is a shift register, so")
+    print("   a command identical to the previous one produces no transition at")
+    print("   all -- which is exactly what the §0d duplicate CMD12 looked like.")
+    for t, idx, a in wire_commands(w, t0):
         st = card_state(cs, t)
-        if (a, st) in seen:  # inCmd shifts, so the same command matches repeatedly
-            continue
-        seen.add((a, st))
-        print(f"  cyc {cyc(t):>8}  arg=0x{a:08x} ({a})  card={st}  "
+        print(f"  cyc {cyc(t):>8}  CMD{idx:<3} arg=0x{a:08x} ({a})  card={st}  "
               f"free_wr_buf={(int(at(cs, t)) >> 8) & 1}")
-        if st != "TRAN":
+        if idx in (24, 25) and st != "TRAN":
             print("      >> DROPPED (handler requires TRAN; else branch returns an "
                   "empty response with no error bit, so the host never notices)")
 

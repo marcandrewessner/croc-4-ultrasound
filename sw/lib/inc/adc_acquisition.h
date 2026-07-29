@@ -57,10 +57,23 @@
 #define ADC_ACQ_MODE_IDLE                 0x00
 #define ADC_ACQ_MODE_SINGLE_ACQ_F0        0x04
 #define ADC_ACQ_MODE_CONTINUOUS_ACQ_F0_F1 0x10
-// Ping-pong F0/F1 with HW copy to SDCard. Set SDCARD_FRAME_COUNT and SDHCI
-// BLOCK_COUNT to the same N before enabling: N=1 behaves like the old
-// SINGLE_SDCARD, N>1 like the old CONTINUOUS_SDCARD.
-#define ADC_ACQ_MODE_ACQ_SDCARD           0x18
+// Ping-pong F0/F1 with HW copy to SDCard, capture overlapped with streaming:
+// the ADC fills one bank while the copy engine streams the other out as its
+// own CMD25 session. Set SDCARD_FRAME_COUNT to the number of frames (banks)
+// to capture and SDCARD_BLOCK_COUNT to the blocks in *one* bank. Because
+// streaming runs while capturing, the card must keep up with the ADC in real
+// time -- one session must complete within one bank fill, else
+// SDCARD_OVERFLOW.
+#define ADC_ACQ_MODE_SDCARD_CONTINUOUS    0x18
+// One-shot burst ("pulse") capture: the ADC fills F0 then F1 with nothing
+// streaming alongside, and only once both are full does the copy engine run,
+// writing both banks out as a single CMD25 session (8 blocks of 512 B for two
+// full banks). No real-time throughput requirement at all -- the capture is
+// bounded at two banks instead. Set SDCARD_BLOCK_COUNT to the blocks in
+// *both* banks; SDCARD_FRAME_COUNT is ignored. SDCARD_DONE fires when the
+// session is physically committed and MODE auto-reverts to IDLE; re-arm
+// (CLEAR_STATUS + CLEAR_Fx_FULL, RESET_WRITE_HEAD, set MODE) per pulse.
+#define ADC_ACQ_MODE_SDCARD_PULSE         0x1C
 
 // STATUS bits (use as bitmasks on STATUS register value)
 #define ADC_ACQ_STATUS_F0_FULL_BIT      ADC_ACQUISITION_REG__STATUS__F0_FULL_bp

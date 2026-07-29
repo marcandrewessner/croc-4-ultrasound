@@ -156,21 +156,47 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
   // frame that overflowed keeps Fx_FULL set forever, since a failed copy
   // never clears it, and it must stay blocked until software clears
   // SDCARD_OVERFLOW and the Fx_FULL flags via CNTRL).
-  logic sd_mode;
-  assign sd_mode = reg2hw.CONF.MODE.value == adc_acquisition_reg_pkg::adc_mode__ACQ_SDCARD;
+  // The two SD modes differ only in *when* a job is dispatched and how much
+  // of the SRAM one job covers -- the copy engine's SD-side sequence is
+  // identical for both:
+  //   SDCARD_CONTINUOUS: dispatch as soon as either bank fills, one session
+  //     per bank, so capture and streaming overlap (and the card must keep
+  //     up with the ADC).
+  //   SDCARD_PULSE: dispatch only once *both* banks have filled, one session
+  //     covering both, so nothing overlaps and there is no throughput
+  //     requirement -- the capture is bounded at two banks instead.
+  logic sd_mode_continuous, sd_mode_pulse, sd_mode;
+  assign sd_mode_continuous =
+    reg2hw.CONF.MODE.value == adc_acquisition_reg_pkg::adc_mode__SDCARD_CONTINUOUS;
+  assign sd_mode_pulse =
+    reg2hw.CONF.MODE.value == adc_acquisition_reg_pkg::adc_mode__SDCARD_PULSE;
+  assign sd_mode = sd_mode_continuous || sd_mode_pulse;
 
   logic sdcard_busy;
   logic sdcard_start;
   logic sdcard_copy_f0;
+  logic sdcard_copy_both;
 
-  // F0 takes priority; F1 only starts once F0 isn't pending. Combinational
+  // SDCARD_CONTINUOUS: F0 takes priority; F1 only starts once F0 isn't
+  // pending. SDCARD_PULSE: nothing starts until both banks are full, and
+  // then exactly one job covers both. Combinational
   // on sdcard_busy (itself derived from the controller's registered state),
   // so this naturally pulses for exactly one cycle per job: the cycle
   // start_i fires, busy_o (still reflecting the *previous* state) is low,
   // and the very next cycle busy_o goes high and gates this back off.
+  //
+  // In pulse mode the one job is also structurally the last: F1_FULL and
+  // capture_done_q (which feeds is_last_frame_i) are set in the same cycle
+  // by the F1 boundary, so capture_done_q is already high the first time
+  // this can fire.
+  logic sdcard_frames_ready;
+  assign sdcard_frames_ready = sd_mode_pulse
+    ? (reg2hw.STATUS.F0_FULL.value && reg2hw.STATUS.F1_FULL.value)
+    : (reg2hw.STATUS.F0_FULL.value || reg2hw.STATUS.F1_FULL.value);
   assign sdcard_start   = sd_mode && !sdcard_busy && !reg2hw.STATUS.SDCARD_OVERFLOW.value &&
-                           (reg2hw.STATUS.F0_FULL.value || reg2hw.STATUS.F1_FULL.value);
-  assign sdcard_copy_f0 = reg2hw.STATUS.F0_FULL.value;
+                           sdcard_frames_ready;
+  assign sdcard_copy_f0   = reg2hw.STATUS.F0_FULL.value;
+  assign sdcard_copy_both = sd_mode_pulse;
 
   adc_acquisition_sdcard_controller #(
     .mgr_obi_req_t ( mgr_obi_req_t ),
@@ -180,6 +206,7 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
     .rst_ni,
     .start_i                ( sdcard_start        ),
     .copy_f0_i              ( sdcard_copy_f0      ),
+    .copy_both_i            ( sdcard_copy_both    ),
     // The dispatched job's "is this the capture's last frame" flag is
     // exactly capture_done_q (§2a): it's guaranteed already settled by the
     // time sdcard_start can fire for the corresponding job (see
@@ -213,19 +240,27 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
   current_frame_e current_frame_d, current_frame_q;
   `FF(current_frame_q, current_frame_d, CURRENT_FRAME_0, clk_i, rst_ni)
 
-  // ACQ_SDCARD frame budget (DATAPATH.md §2a): frames_started_q counts how
+  // SDCARD_CONTINUOUS frame budget (DATAPATH.md §2a): frames_started_q
+  // counts how
   // many frames have been claimed for filling so far, F0's initial fill
   // counting as frame 1 -- incremented at the exact ping-pong boundary
   // crossing, not on the copy engine's (slower, dispatch-lag) start_i, so
   // the ADC never claims an (N+1)th frame in the first place, closing the
   // fast-dispatch/slow-completion race described there. capture_done_q
   // latches once the Nth frame's boundary is reached, so the ADC-fill side
-  // parks (no more pushes) until software moves MODE away from
-  // ACQ_SDCARD, instead of re-evaluating target_frame_full against a bank
+  // parks (no more pushes) until software moves MODE away from the SD mode,
+  // instead of re-evaluating target_frame_full against a bank
   // it deliberately isn't going to reuse.
+  //
+  // frames_started_q is SDCARD_CONTINUOUS-only. SDCARD_PULSE has no frame
+  // budget to track -- its length is fixed at both banks -- so it sets
+  // capture_done_q directly at the F1 boundary and never touches this
+  // counter.
   logic [31:0] frames_started_d, frames_started_q;
   `FF(frames_started_q, frames_started_d, 32'd1, clk_i, rst_ni)
 
+  // Sticky "the ADC has captured everything it was asked for": parks the
+  // fill side, and doubles as the copy engine's is_last_frame_i.
   logic capture_done_d, capture_done_q;
   `FF(capture_done_q, capture_done_d, 1'b0, clk_i, rst_ni)
 
@@ -241,7 +276,7 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
   // the system clock, is many cycles later. Without the
   // adc_data_word_ready term every consumer of this signal fired during
   // that gap, i.e. one word early: SINGLE_ACQ_F0 reverted MODE to IDLE and
-  // ACQ_SDCARD/CONTINUOUS redirected the write head to the other bank,
+  // the ping-pong modes redirected the write head to the other bank,
   // both before the word at F0_END_ADDR was ever written. Confirmed via
   // waveform: the ADC DMA wrote 127 distinct words per frame, with
   // 0x1000_11fc (F0) and 0x1000_19fc (F1) never written at all, so every
@@ -262,9 +297,11 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
 
   // True if the bank the write head currently targets still has its
   // Fx_FULL flag set, i.e. its previous contents haven't been consumed
-  // yet. ACQ_SDCARD and CONTINUOUS_ACQ_F0_F1 use this to stop the ADC from
+  // yet. Every ping-pong mode uses this to stop the ADC from
   // wrapping around and overwriting a frame its consumer hasn't read yet
-  // when that consumer is slower than one frame's fill time.
+  // when that consumer is slower than one frame's fill time. In
+  // SDCARD_PULSE, where no bank is ever reused, it degenerates into a
+  // start-of-pulse check that both banks were released.
   logic target_frame_full;
   assign target_frame_full = (current_frame_q == CURRENT_FRAME_0)
     ? reg2hw.STATUS.F0_FULL.value
@@ -322,16 +359,18 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
       hw2reg.STATUS.SDCARD_OVERFLOW.next = 1'b0;
     end
 
-    // --- Auto-stop: single-shot modes revert to IDLE once their one job is
-    // done, so the ADC-fill logic below can't re-arm itself afterwards. Both
-    // single-shot modes are handled here so there is exactly one place that
-    // answers "when does MODE auto-revert to IDLE" -- CONTINUOUS_* modes are
-    // deliberately absent, they only stop via SDCARD_OVERFLOW or software.
+    // --- Auto-stop: bounded-length modes revert to IDLE once their capture
+    // is done, so the ADC-fill logic below can't re-arm itself afterwards.
+    // All of them are handled here so there is exactly one place that
+    // answers "when does MODE auto-revert to IDLE". Both SD modes qualify:
+    // SDCARD_CONTINUOUS is continuous only across its SDCARD_FRAME_COUNT
+    // frames and ends on the last one's sdcard_done_set, SDCARD_PULSE ends
+    // on its single job's. CONTINUOUS_ACQ_F0_F1 is deliberately absent -- it
+    // is the one genuinely unbounded mode and only stops via software.
     if (reg2hw.CONF.MODE.value == adc_acquisition_reg_pkg::adc_mode__SINGLE_ACQ_F0
         && f0_frame_just_filled)
       hw2reg.CONF.MODE.next = adc_acquisition_reg_pkg::adc_mode__IDLE;
-    if (reg2hw.CONF.MODE.value == adc_acquisition_reg_pkg::adc_mode__ACQ_SDCARD
-        && (sdcard_done_set || sdcard_overflow_set))
+    if (sd_mode && (sdcard_done_set || sdcard_overflow_set))
       hw2reg.CONF.MODE.next = adc_acquisition_reg_pkg::adc_mode__IDLE;
 
     // --- Mode-specific ADC write control ---
@@ -351,7 +390,7 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
       end
 
       adc_acquisition_reg_pkg::adc_mode__CONTINUOUS_ACQ_F0_F1: begin
-        // Same target_frame_full guard as ACQ_SDCARD below: without it, the
+        // Same target_frame_full guard as the SD modes below: without it, the
         // ADC silently overwrites a bank software hasn't read out yet, with
         // no flag raised anywhere to notice by. Reuses ADC_OVERFLOW (rather
         // than SDCARD_OVERFLOW, which is worded SD-specific) since it's
@@ -385,9 +424,9 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
         end
       end
 
-      adc_acquisition_reg_pkg::adc_mode__ACQ_SDCARD: begin
+      adc_acquisition_reg_pkg::adc_mode__SDCARD_CONTINUOUS: begin
         // Ping-pong F0/F1, HW copy engine drains each bank to the SD card
-        // with its own CMD24 (WRITE_BLOCK) per frame. Works for any
+        // with its own CMD25 session per frame. Works for any
         // configured frame count N (software sets SDCARD_FRAME_COUNT to N
         // before enabling this mode): N=1 behaves like the old
         // SINGLE_SDCARD, N>1 like the old CONTINUOUS_SDCARD -- same
@@ -442,6 +481,68 @@ module adc_acquisition_top import adc_acquisition_pkg::*; #(
                 current_frame_d   = CURRENT_FRAME_0;
                 frames_started_d  = frames_started_q + 1;
               end
+            end
+          end
+        end
+      end
+
+      adc_acquisition_reg_pkg::adc_mode__SDCARD_PULSE: begin
+        // One-shot burst: fill F0, roll straight on into F1, then stop. The
+        // copy engine is not dispatched until *both* banks are full (see
+        // sdcard_frames_ready above), and then runs once for both of them
+        // as a single CMD25 session -- 8 blocks for two full banks.
+        //
+        // Why this is a separate case rather than SDCARD_CONTINUOUS with
+        // SDCARD_FRAME_COUNT = 2: the difference is not the frame budget,
+        // it is that no copy overlaps the capture at all. That removes the
+        // real-time constraint the continuous mode lives under
+        // (T_session <= T_fill), so the whole ping-pong frame-budget
+        // apparatus has nothing to do here -- the capture length is fixed
+        // at the two banks, hence no frames_started_q and no
+        // SDCARD_FRAME_COUNT (that register is ignored in this mode).
+        //
+        // capture_done_q is still what parks the ADC, and it is set at the
+        // F1 boundary in the same cycle as F1_FULL, which is also the cycle
+        // the job becomes dispatchable -- so the job's is_last_frame_i
+        // (wired to capture_done_q) is high for it, and SDCARD_DONE fires
+        // when the session is physically committed. MODE then auto-reverts
+        // to IDLE; software re-arms (clear status, RESET_WRITE_HEAD, set
+        // MODE) for the next pulse.
+        //
+        // target_frame_full cannot fire from bank reuse here -- each bank is
+        // written exactly once -- but it is kept as the guard against
+        // starting a pulse on top of a bank whose Fx_FULL software never
+        // cleared, which would otherwise capture into a bank the engine is
+        // about to stream from, or has already streamed.
+        if (!reg2hw.STATUS.SDCARD_OVERFLOW.value && !capture_done_q) begin
+          if (target_frame_full) begin
+            hw2reg.STATUS.SDCARD_OVERFLOW.next = 1'b1;
+          end else begin
+            dma_push    = adc_data_word_ready;
+            dma_address = {reg2hw.WRITE_HEAD.WORD_ADDRESS.value, 2'b00};
+            dma_data    = adc_data_word;
+            if (dma_push)
+              hw2reg.WRITE_HEAD.WORD_ADDRESS.next = reg2hw.WRITE_HEAD.WORD_ADDRESS.value + 1;
+
+            // dma_push qualifier: see f0_frame_just_filled above -- without
+            // it the head is redirected to F1 while still pointing at F0's
+            // unwritten last word.
+            if (dma_push
+                && reg2hw.WRITE_HEAD.WORD_ADDRESS.value == reg2hw.F0_END_ADDR.WORD_ADDRESS.value
+                && current_frame_q == CURRENT_FRAME_0) begin
+              // F0_FULL is raised here even though nothing consumes it yet:
+              // it is half of the both-full dispatch condition, and it keeps
+              // Fx_FULL's meaning ("this bank holds a captured frame")
+              // uniform across modes.
+              hw2reg.STATUS.F0_FULL.next          = 1'b1;
+              hw2reg.WRITE_HEAD.WORD_ADDRESS.next = reg2hw.F1_START_ADDR.WORD_ADDRESS.value;
+              current_frame_d = CURRENT_FRAME_1;
+            end
+            if (dma_push
+                && reg2hw.WRITE_HEAD.WORD_ADDRESS.value == reg2hw.F1_END_ADDR.WORD_ADDRESS.value
+                && current_frame_q == CURRENT_FRAME_1) begin
+              hw2reg.STATUS.F1_FULL.next = 1'b1;
+              capture_done_d             = 1'b1; // pulse captured, hand off to the engine
             end
           end
         end

@@ -3,29 +3,568 @@
 Working doc for planning the datapath, not a tutorial. Current-state facts
 are cited to file:line where it matters for a decision; skip otherwise.
 
-## Modes — current vs target
+## Modes — as implemented
 
-| Mode | Banks | Consumer | N source | Throughput req | Status |
+| Mode | Banks | Session covers | Consumer | N source | Throughput req |
 |---|---|---|---|---|---|
-| `IDLE` | — | — | — | — | unchanged |
-| `SINGLE_ACQ_F0` | F0 | CPU read | fixed 1 | none | unchanged |
-| `CONTINUOUS_ACQ_F0_F1` | F0+F1 | CPU read | unbounded | `T_read < T_fill` | **bug**: no `target_frame_full` check (top.sv:294-312), silent overwrite |
-| `SINGLE_SDCARD` | F0 | HW copy + card | `BLOCK_COUNT=1` | none | to merge → `ACQ_SDCARD` |
-| `CONTINUOUS_SDCARD` | F0+F1 | HW copy + card | `BLOCK_COUNT=N` | `T_block ≤ T_fill` | to merge → `ACQ_SDCARD` |
+| `IDLE` | — | — | — | — | — |
+| `SINGLE_ACQ_F0` | F0 | sw-set span | CPU read | fixed 1 | none |
+| `CONTINUOUS_ACQ_F0_F1` | F0+F1 | sw-set span | CPU read | unbounded | `T_read < T_fill` |
+| `SDCARD_CONTINUOUS` | F0+F1 | one whole bank (2 KiB, 4 blocks) | HW copy + card | `SDCARD_FRAME_COUNT` | `T_session ≤ T_fill` |
+| `SDCARD_PULSE` | F0+F1 | **both** banks (4 KiB, 8 blocks) | HW copy + card | fixed 2 (both banks) | **none** |
 
-Target: collapse `SINGLE_SDCARD`+`CONTINUOUS_SDCARD` → one `ACQ_SDCARD`
-mode. Both are the same mechanism at different `BLOCK_COUNT`; the
-ADC-fill side needs zero knowledge of N once §2 lands. N lives in exactly
-one place: SDHCI `BLOCK_COUNT`, already sw-configured pre-`CMD25` today.
+`SINGLE_SDCARD`/`CONTINUOUS_SDCARD` were collapsed into what is now
+`SDCARD_CONTINUOUS` (§2, landed): one mechanism, parametrized by frame
+count. The ADC-fill side knows N only through `SDCARD_FRAME_COUNT`; the SD
+side's per-session geometry is
+`SDCARD_BLOCK_SIZE`/`SDCARD_BLOCK_COUNT` (§0). `SDCARD_PULSE` (§5) is the
+same SD mechanism run once over both banks after capture has stopped.
 
 Bank-reuse is what matters, not the literal N:
 - N≤2: each bank written once, no reuse → no throughput requirement, only
-  latency. Existing ping-pong/overflow code degrades into this safely,
+  latency. The ping-pong/overflow code degrades into this safely,
   no special-casing.
-- N>2: bank reuse required → `T_block ≤ T_fill` must hold or
-  `target_frame_full` (correctly) trips `SDCARD_OVERFLOW`.
+- N>2: bank reuse required → `T_session ≤ T_fill` must hold or
+  `target_frame_full` (correctly) trips `SDCARD_OVERFLOW`. `T_fill` is now
+  4× longer than in the per-block design (a whole bank, not one block), which
+  is most of why the larger session is affordable.
+- `SDCARD_PULSE` sits outside this entirely: no bank is reused *and* no
+  session overlaps a fill, so the throughput requirement is not merely
+  slack, it is absent by construction (§5).
 
-## §1 — SUPERSEDED: multi-block `CMD25` abandoned in favor of per-block `CMD24`
+## §0 — CURRENT DESIGN: full-SRAM double buffering, `CMD25` per bank
+
+> Supersedes §1/§1b below. §1's per-block `CMD24` decision was reversed once
+> the buffer geometry changed; §1c–§1e remain live, they are bugs in code
+> that still exists. Read this section first — §1 is kept for the reasoning
+> trail, not as a description of the implementation.
+
+A frame is now **one entire SRAM bank** (2 KiB = 4 × 512 B blocks), not one
+SD block. Both ADC banks are used, F0/F1 ping-pong as before, and each filled
+frame is streamed out as a **single `CMD25` (WRITE_MULTIPLE_BLOCK) session
+closed by `AUTO_CMD12`**. The ADC fills one bank while the copy engine
+streams the other, so capture stays continuous while each SD transaction
+carries 2 KiB instead of 512 B.
+
+**Why §1's objection does not apply here.** §1 abandoned `CMD25` because
+`BUFFER_WRITE_READY` was being used as a proxy for *per-block physical
+completion* — which it is not, it reflects SDHCI-internal buffer occupancy —
+and that proxy was needed only because banks had to be released one block at
+a time. With a whole bank per session, nothing needs per-block completion:
+the bank is released once, at the end of the session, on its single real
+`TRANSFER_COMPLETE`. BWR goes back to meaning only "you may push more words".
+The hazard is designed out rather than managed. (Note this is *not* the
+"shorten `busy_o`" mistake §1d warns against — `busy_o` still spans the whole
+session through `AUTO_CMD12` and the card's final `PRG`→`TRAN`.)
+
+**Backpressure is what makes it work.** Streaming a 2 KiB frame through the
+1 KiB SDHCI DAT buffer requires the data port to be able to say "not now".
+That path existed but was disabled: `sdhci_top.sv` tied the register
+interface's `buffer_data_port_*_ready_i` to `1'b1` unless
+`AllowNoncompliantBufferSizes`, so `dat_buffer.sv` still gated its internal
+`reg_push` on a ready the bus never honoured and over-pushed words were
+**silently dropped**. Those inputs are now routed unconditionally, so
+`reg_ready` → `reg_rsp.ready` → OBI `gnt` (`sdhci_obi_to_reg.sv`) genuinely
+stalls the copy engine. Done this way rather than by setting
+`AllowNoncompliantBufferSizes`, which reaches the same signal but also
+disables the buffer-size assertions and weakens BWR from "room for a whole
+block" to "room for one word".
+
+Consequences worth knowing:
+
+- **The engine does not pace per block.** It waits for BWR once, then pushes
+  the whole frame, stalling on the grant. Safe because `dat_buffer.sv`'s
+  block-boundary logic pulses `buffer_write_enable` (the status bit) low
+  without touching `buffer_data_port_write_ready_o` (the flow-control
+  signal), so the data path never closes mid-session.
+- **Inter-block card busy is the IP's problem, not ours.** `dat_write.sv`
+  already ends every block with `STATUS_END_BIT → BUSY: if (dat0_i) → DONE`,
+  so §1d's "host thinks it's done, card doesn't" cannot recur *between*
+  blocks of a session. `CE_WAIT_CARD_READY` still guards the session end.
+- **`AUTO_CMD12` cannot be waited on directly** — see §0c. It produces no
+  `COMMAND_COMPLETE`; `CE_WAIT_CARD_READY` covers it via `CMD_INHIBIT_DAT`,
+  requiring its pass condition on two consecutive polls.
+- **BWR must be cleared at session start.** BWR re-asserts at every block
+  boundary but is acked only once, so a session reliably *ends* with it set
+  and nothing else clears it. `CE_CLEAR_STALE_STATUS` now discards it along
+  with `TRANSFER_COMPLETE` and `COMMAND_COMPLETE` — same stale-sticky-status
+  class as §1c, caught by asking what §1c's lesson implied for the new flow.
+- **`CE_COPY_WORD` needs a timeout.** The grant can now stall indefinitely,
+  and `accepts_data_port_chunk` goes low permanently once SDHCI has taken
+  `BLOCK_COUNT` blocks — so a mis-sized session would hang forever. The copy
+  loop counts cycles since the last *accepted* word (not total duration, which
+  legitimately exceeds `POLL_TIMEOUT` on a slow card) and bails to
+  `CE_OVERFLOW`.
+- **N is configured in two more places.** `SDCARD_BLOCK_SIZE` and
+  `SDCARD_BLOCK_COUNT` are new registers; hardware writes them into SDHCI at
+  session start. Software must keep
+  `SDCARD_BLOCK_SIZE × SDCARD_BLOCK_COUNT == frame byte count` — not checked
+  in hardware (a mismatch surfaces as the `CE_COPY_WORD` timeout above).
+  `SDCARD_FRAME_COUNT` is unchanged in meaning: frames, i.e. bank-fills.
+- **`SDCARD_BLOCK_ADDR` advances per session, not per block** — by
+  `SDCARD_BLOCK_COUNT` (block units) or the frame's byte count (byte units).
+  Within a session the card advances its own write pointer.
+
+### §0a — Bug 5: §1c's "harmless passenger" is fatal to a multi-block session
+
+First `CMD25` run (N=1) failed with `SDCARD_OVERFLOW` after 0/1 frames. The
+copy engine reached `CE_COPY_WORD`, pushed **384 of 512 words — exactly 3
+blocks** — and then stalled until the new stall timeout fired 5.02 ms later.
+
+The stall was the symptom; the session had already died on block 1:
+
+```
+8847.38 us  dat_wrap write_state_q = WRITING
+8868.39 us  ... = TIMEOUT_WRITING        ← block 1 aborts
+8868.40 us  ... = DONE_WRITING           ← whole session over, after ONE block
+8868.41 us  dat_state_q leaves WRITE     ← buffer stops draining for good
+```
+
+With the DAT side out of `WRITE`, the 1 KiB SDHCI buffer never drained again:
+384 pushed − 128 transmitted = 256 words resident = full, grant withheld
+forever. `wr_idx_q` froze at 384.
+
+Root cause is the §1c Bug 2 sampling race, unchanged and still firing on every
+block: `dat_write.sv`'s `STATUS_START_BIT` sampled `dat0_i` exactly once at the
+nominal `N_CRC` = 2-clock turnaround, and `sdModel.v` starts its CRC-status
+token ~1.15 SD clocks later (measured: sample at 8868260 ns reads 1, DAT0 falls
+at 8868283 ns). The whole 5-bit token was therefore read one clock early —
+`status_q` came out `001` instead of `010`, `end_bit_err_q` set as well, and
+`data_timeout_q` latched.
+
+What changed is only the *consequence*. §1c called this flag "purely a
+passenger" because under single-block `CMD24` the `TIMEOUT_WRITING` detour
+still reached `DONE_WRITING` on a session that was one block anyway — the block
+had already landed and the only residue was a stale `EINTR_STATUS` bit. But
+`DONE_WRITING_BLOCK` is the **only** state that loops back to
+`WAIT_FOR_WRITE_BUFFER` for the next block, and `TIMEOUT_WRITING` bypasses it
+(`dat_wrap.sv:313-322`). So the flag silently truncates *any* multi-block
+session to one block, at any `BLOCK_COUNT`.
+
+Fix in `dat_write.sv`: `STATUS_START_BIT` now searches for the start bit over a
+`StatusStartWindow` (default 8 SD clocks) instead of sampling once, latching
+`data_timeout` only if it never arrives. The zero-margin sample was fragile
+independent of this model — real pad and board round-trip delay at 50 MHz eats
+a full clock on its own.
+
+Lesson, and it is the same one §1c and §1e already stated in a different form:
+a defect written off as harmless was only harmless *against the surrounding
+design*. When that design changes, re-derive the "harmless" conclusion instead
+of inheriting it. Both §1c bugs were re-read during this work and their
+*mechanism* was correctly carried over — what was not re-checked was whether
+their **consequence** still held.
+
+### §0c — Bug 6: `AUTO_CMD12` produces no `COMMAND_COMPLETE`
+
+With §0a fixed, the session ran correctly end to end — `status_q` = `010`,
+`data_timeout_q` never set, `write_state_q` looping
+`WRITING → DONE_WRITING_BLOCK → WAIT_FOR_WRITE_BUFFER` per block,
+`wr_idx_q` reaching 512, `AUTO_CMD12` issued and completed — and then the copy
+engine sat in `CE_WAIT_AUTOCMD12_COMPLETE` polling forever.
+
+That state was waiting for an event that structurally cannot occur.
+`autocmd_wrap.sv:196-198` masks the status bit the interrupt is derived from:
+
+```systemverilog
+// autocmd12 execution should not inhibit the driver
+assign command_inhibit_cmd_o.d = driver_cmd_queued_q |
+                                 (cmd_inhibit_logic && ~running_autocmd12_q);
+```
+
+So `present_state.command_inhibit_cmd` never rises for an auto command, and
+`COMMAND_COMPLETE` is generated from that field's 1→0 edge
+(`sdhci_reg_logic.sv:201-205`) — no rise, no edge, no interrupt. This matches
+the SDHCI spec, which does not generate Command Complete for Auto CMD12. The
+internal `cmd_inhibit_logic` *does* toggle (measured rising at 10146.50 µs,
+falling at 10148.58 µs), which is what makes the mistake easy to make from a
+waveform: the signal that moves is not the signal the interrupt watches.
+
+**Fix.** The four `CE_*_AUTOCMD12_*` states are gone. `CE_WAIT_CARD_READY`
+covers CMD12 via `CMD_INHIBIT_DAT`, which *does* assert for its R1b response
+(`dat_state` → `BUSY`). Two additions:
+
+- **Two-consecutive-poll requirement.** The original worry was real:
+  `TRANSFER_COMPLETE` fires on `command_inhibit_dat`'s 1→0 edge and CMD12
+  re-raises it one cycle later, so there is a 1-cycle window where everything
+  reads idle with CMD12 not yet started. Requiring two consecutive passes
+  closes it without depending on arithmetic about OBI round-trip length — the
+  CMD12 busy window is ~107 cycles against a poll interval of ~3.
+- **`CE_CHECK_ERRORS`.** One `NINTR_STATUS` read before `CE_DONE`. With no
+  `COMMAND_COMPLETE` to inspect, this is the only place an `AUTO_CMD12` failure
+  (`EINTR_STATUS` bit 8 → `ERROR_INTERRUPT`) can be detected at all.
+
+**Do not use DAT0 for this race.** It reads high across the whole window
+against `sdModel.v`, whose CMD12 asserts no R1b busy — verified on the
+waveform. DAT0 is the right signal for the card's own programming busy
+afterwards and useless for this.
+
+Same lesson as §0a from the other direction: there I inherited a conclusion
+without rechecking it; here I invented a wait from a plausible mechanism
+without checking whether the IP actually generates the event. Both are the
+"nearly the right signal" failure this file keeps recording.
+
+### §0d — Bug 7: the second session's `CMD25` went out as a second `CMD12`
+
+With §0a and §0c fixed, N=4 got session 1 fully onto the card and then failed
+with `SDCARD_OVERFLOW after 1/4 frames`. The overflow was *not* the copy
+engine's: `sdcard_overflow_set` never pulses in the whole run. The copy engine
+hung in `CE_COPY_WORD` (`wr_idx_q` frozen at 384 = 3 blocks, exactly the §0a
+signature of a session that died on block 1), the ADC kept filling, and
+`adc_acquisition_top`'s own `target_frame_full` raised the status bit at
+12982 µs. Note the sw message reads "SDHCI was not ready", which is what the
+ADC side concluded — the actual fault is two levels down.
+
+Session 2's `CMD25` never reached the card. Decoding the CMD line bit by bit
+off the waveform (sample `i_sd_card.cmd_i` on each `sd_clk_i` posedge while
+`cmd_en_i`):
+
+```
+job 1  10934.15 us  0 1 011001 00000000...  -> CMD25, arg 0        (correct)
+job 2  11958.15 us  0 1 001100 00000000...  -> CMD12, arg 0        (!!)
+```
+
+The card answered R1 with index 12 and stayed in `TRAN`; it never entered
+`RCV`, `dataState`/`BlockAddr`/`flash_write_cnt` never move again for the rest
+of the run. But `data_present_select` was still set in the COMMAND register, so
+SDHCI ran the data phase anyway — streaming block 1 at a card that had not been
+told to receive it, getting no CRC status token back, and so tripping
+`dat_write.sv`'s (now windowed, §0a) start-bit search into a real
+`data_timeout` → `TIMEOUT_WRITING` → session over after one block → the 1 KiB
+DAT buffer never drains → the grant is withheld forever → `CE_COPY_WORD` hangs.
+Every downstream symptom follows from the wrong command index.
+
+**Root cause, `autocmd_wrap.sv`.** `running_autocmd12_q` means "the command
+executing right now is the auto CMD12", but it is only ever reassigned at
+`command_started`, so it stays set through the entire idle gap after the auto
+CMD12 completes. The command mux keyed off it:
+
+```systemverilog
+assign is_autocmd12 = autocmd12_queued_q | running_autocmd12_q;
+assign current_cmd  = is_autocmd12 ? 6'd12 : reg2hw.command.command_index.q;
+assign current_arg  = is_autocmd12 ? '0    : reg2hw.argument.q;
+```
+
+and `accepted_cmd_q`/`accepted_arg_q`/`accepted_rsp_type_q` latch `current_*`
+*at* `command_started` — the one cycle where the stale 1 is still visible
+(`running_autocmd12_q` clears in the same cycle's `_d`). Confirmed directly:
+`accepted_cmd_q` has exactly one transition in the whole run, to 12 at
+11041.24 µs, and no transition at all at 11958.15 µs when job 2's command was
+accepted. So *every* driver command issued after an `AUTO_CMD12` is rewritten
+into another `CMD12` — session 2 onward, forever.
+
+**Fix.** Key the mux on `autocmd12_queued_q` alone (`starting_autocmd12`),
+which is precisely the arbitration `request_commands` itself applies at
+`command_started`. The stability argument in the old comment is obsolete: the
+values are re-latched into `accepted_*_q`, `cmd_logic` reads those and not the
+mux, and `cmd_needs_busy_o` is sampled by `dat_wrap.sv` only under
+`cmd_started_i` — all three consumers sample exactly at `command_started`.
+`cmd_data_present_o` and `active_transfer_direction_q` in the same module
+already key off `autocmd12_queued_q` for this reason. `running_autocmd12_q` is
+left as is for the status/response/error paths, which all qualify it with an
+event that can only occur during execution, plus a comment saying what it must
+not be used for.
+
+This is `AUTO_CMD12`'s first use in this repo, so nothing had exercised the
+"driver command after an auto command" path before §0. Same family as §0a and
+§0c and worth stating in the general form the file has been circling: **a flag
+that names a state is only as good as the event that clears it.** §1c's bits
+were never cleared, §0c's was never set, this one is cleared a command too
+late. When reading an IP's status flag, find its clear edge before trusting its
+level.
+
+### §0b — Real-card readiness (the model hides four things)
+
+Everything above was validated against `sdModel.v`, which is permissive in
+ways that matter. These were fixed together, and only the last is a
+consequence of the `CMD25` work:
+
+1. **`ACMD6` was never sent** — `sdh_init()` set the *host* to 4-bit
+   (`HOST_CTL`) but never told the card, leaving it listening on DAT0 alone
+   while the host spread each byte over four lines. The model hides this
+   completely: its data path hardcodes 4-bit reception
+   (`bitBlockRec = blockSize * 2`) regardless of its own `BusWidth` register,
+   which `ACMD6` is the only thing that sets. On a real card this corrupts the
+   very first block. Now sent right after `CMD7`, before `HOST_CTL`.
+2. **No `CMD6` high-speed switch** while clocking the bus at 50 MHz — out of
+   spec for a card still in default speed (25 MHz ceiling). Now done via
+   `sdh_switch_func()` (check, then set, reading the mandatory 64-byte status
+   both times so the DAT lines don't stay busy into the next command), and a
+   failed switch is a hard init failure.
+
+   **It is skipped entirely when `SIM_CARD` is set, and must be.** `sdModel.v`
+   has no `SWITCH_FUNC` handler — its `6:` case only accepts the `ACMD6` form —
+   and the first attempt to issue it anyway hung the run. The failure is not
+   cheap: `CMD6` carries a data phase, so an unanswered one parks `dat_state_q`
+   in `READ`/`READING` waiting for a 64-byte block that never comes, released
+   only by the SDHCI data timeout — 1.34 s of simulated time at
+   `SDHC_TIMEOUT_MAX`, i.e. hours of wall clock under Verilator. The
+   software-side spin timeouts (~300 ms) give up long before the hardware does,
+   so every later command inherits a hung DAT line. Worth remembering as a
+   general shape: *a software timeout does not undo the hardware state the
+   timed-out operation left behind.* On the real-card path a failed `CMD6` now
+   issues a CMD/DAT software reset before returning, for the same reason.
+3. **High speed is required, not optional.** At a spec-legal 25 MHz the 4-bit
+   bus gives 12.5 MB/s against the ADC's 16 MB/s (8 MSa/s × 2 B), so
+   `SDCARD_CONTINUOUS` would overflow by construction. Only 50 MHz
+   (25 MB/s) closes, which is why a failed `CMD6` is treated as fatal rather
+   than a fallback. `SDCARD_PULSE` (§5) is exempt — it does not stream while
+   capturing — but high speed is still what makes its dump time reasonable.
+4. **`POLL_TIMEOUT` was 5 ms** against an SD-spec worst case of 250 ms per
+   write. Now 25M cycles (250 ms at 100 MHz), counter widened 20 → 25 bits.
+   This became urgent with `CMD25`: `CE_WAIT_TRANSFER_COMPLETE` now spans the
+   whole session including every inter-block program cycle, and `CE_COPY_WORD`
+   stalls on the grant for as long as the card is busy between blocks — so at
+   5 ms a healthy transfer to a slow card would have been aborted as an
+   overflow. The model's ~5 µs busy would never have shown it.
+
+Also `SDCARD_ADDR_IS_BLOCKS`, which must be 0 for the model and 1 for a real
+SDHC/SDXC card, is now behind a `SIM_CARD` build switch instead of a comment
+telling you to remember.
+
+**Not verified in simulation:** the `CMD6` path. The model cannot answer it,
+so it is exercised only on real hardware — the sim run proves the *warning*
+branch, not the switch itself.
+
+### §0e — Real-card audit (what passing against `sdModel.v` does not prove)
+
+A clean N=4 run against the model says the *mechanism* works. It does not say
+the design is spec-compliant, because the model is permissive in exactly the
+places compliance matters. Audit of the whole SD-facing path against the SD
+Physical Layer / SDHCI specs rather than against the model. Fixed here:
+
+- **`CMD6` status decode was indexing the wrong words** (`sdhci_helpers.h`).
+  The bit offsets from the spec were right; the mapping to
+  `BUFFER_DATA_PORT` words was not. `dat_read.sv:118-136` enters each received
+  byte at `[31:24]` and shifts the build-up register right by 8, so the
+  **first** byte of every group of four ends up in `[7:0]` — little-endian, per
+  the SDHCI spec's byte-stream port, the opposite of the big-endian reading
+  the code assumed. Correct offsets: group 1 support bit for High Speed is
+  `sw[3]` bit **9** (was 17), selected function is `sw[4][3:0]` (was
+  `[23:20]`). This is a hard init failure on every real card — high speed is
+  mandatory (§0b.3) and a failed switch returns 0 — and it is structurally
+  unreachable in simulation, since the model has no `SWITCH_FUNC` handler. It
+  had been flagged in-code as `UNVERIFIED INDEXING`; the verification it needed
+  was of the RTL that packs the words, not of a real card.
+- **No power-up delay before `CMD0`.** The spec requires ≥74 SD clocks after
+  the supply is stable, and allows 1 ms for the ramp. Bus power now goes on
+  before the clock, followed by ~2 ms of clocking before the first command.
+- **`ACMD41` gave the card ~31 ms.** Fixed iteration count, sized by nothing in
+  particular; the spec allows the card 1 s and real cards commonly take
+  100 ms+. Now a 1 s deadline. The model answers on the first poll, so this
+  could never have shown up in simulation.
+- **Addressing mode was a build switch.** `SDCARD_ADDR_MODE` is negotiated, not
+  a property of the design: OCR bit 30 (CCS) is the card's own answer. It is
+  now read during init (`sdh_card_is_block_addressed()`), with the `SIM_CARD`
+  override kept for the model, which advertises CCS=1 and then behaves like a
+  standard-capacity card. A real SDSC card would previously have been written
+  at 512× the intended offset.
+
+Known and deliberately not fixed here — each is a design decision, not a typo:
+
+- **The card's R1 response is never inspected.** `CE_WAIT_CMD_COMPLETE_RSP`
+  checks `COMMAND_COMPLETE`/`ERROR_INTERRUPT`, which cover CRC/index/timeout of
+  the *response frame*, not the card's own status bits inside it. A real card
+  rejecting `CMD25` (`WP_VIOLATION`, `ADDRESS_ERROR`, wrong state) answers with
+  a perfectly well-formed R1 carrying an error bit, and the engine streams the
+  frame at it anyway, then hangs until `POLL_TIMEOUT` (250 ms) and reports
+  `SDCARD_OVERFLOW`. Fails safe, diagnoses badly. Fix would be one more
+  `RESPONSE0` read in `CE_WAIT_CMD_COMPLETE_RSP` against the R1 error mask.
+- **A CRC-status token of `101`/`110` does not stop the session.**
+  `dat_wrap.sv:305-312` leaves `WRITING` on `write_done` regardless of
+  `write_crc_err`, which is only *reported* into `EINTR_STATUS`. So a block the
+  card rejected is followed by the session's remaining blocks, and the failure
+  surfaces only at `CE_CHECK_ERRORS`, one session late. Against the model this
+  never happens; on a real card it is the normal signalling for a bad block.
+  There is also no retry anywhere — a failed frame is lost, by design.
+- **Nothing recovers the card after `CE_OVERFLOW`.** The engine sets the status
+  bit and parks, leaving the card wherever it was — possibly mid-`CMD25` in
+  `RCV`, or in `PRG`. `AUTO_CMD12` does still fire on the truncated-session
+  path (`dat_wrap.sv:371-379` triggers on `WRITE -> READY` regardless of how
+  `WRITE` was left), so the card is usually stopped, but nothing verifies it.
+  A `CMD12` + `CMD13` + CMD/DAT software reset before any retry is what a real
+  driver would do.
+- **`dat_wrap.sv:191-200` gives the card 4 SD clocks to assert R1b busy** and
+  calls it done otherwise. That is 2 clocks of margin over the spec's 2, at
+  50 MHz, before any pad or board round-trip delay — the same zero-margin
+  sampling shape as §0a, in a different state machine. The copy engine happens
+  to be immune (`CE_WAIT_CARD_READY` re-checks DAT0's *level*, so a missed busy
+  costs nothing), but software using `CMD_INHIBIT_DAT` after an R1b command is
+  not. Same fix as §0a: make the window a parameter and widen it.
+- **`N_WR` (response end bit → data start bit) is not counted anywhere.** The
+  path `WAIT_FOR_RSP → WAIT_FOR_WRITE_BUFFER → START_WRITING` lands the start
+  bit roughly 2 SD clocks after the response, which is the spec minimum with
+  no margin. The model does not police it. Worth a scope check on first
+  bring-up.
+
+And the one that is not a compliance question at all but is the most likely
+thing to break on real hardware — see §0f.
+
+### §0f — Throughput: the model is not a card, and bus rate is not write rate
+
+§0b.3 concluded "only 50 MHz (25 MB/s) closes" against the ADC's demand. That
+is the *bus* rate. What has to keep up is the card's **sustained write** rate,
+and more importantly its **worst-case pause**, because the design's entire
+elasticity is one SRAM bank.
+
+Measured on the N=4 run (`ADC_SAMPLING_FREQ_MHZ = 9`), all off the waveform:
+
+| | |
+|---|---|
+| ADC fill rate | 450 `WRITE_HEAD` advances per 100 µs = 4.5 MW/s = **18 MB/s** (= 9 MSa/s × 2 B, so no samples are being dropped) |
+| Time to fill one bank | 512 words = **113.8 µs** |
+| Session (`CE_CLEAR_STALE_STATUS` → `CE_DONE`) | **108.4 µs** |
+| of which data phase | 4 × 26.2 µs = 104.8 µs (19.6 MB/s effective on a 25 MB/s bus) |
+| **Slack per frame** | **~5 µs, i.e. ~95% utilisation** |
+
+That is against `sdModel.v`, whose program cycle is ~5 µs per block and which
+never pauses. There is essentially no headroom left for a card that does. A
+real card's `CMD25` stream is paced by its internal write: sustained rates for
+a decent UHS-I card are fine, but garbage-collection and wear-levelling pauses
+of **1–100 ms** are normal and permitted (the spec's own worst case for a
+single write is 250 ms — which is exactly why `POLL_TIMEOUT` is 250 ms). Any
+pause beyond ~5 µs overflows, because there is nowhere to put the samples:
+total buffering is 2 KiB, i.e. **114 µs** at this rate.
+
+**The passing run does not exercise this.** In that same waveform, frames were
+*started* 1024 µs apart (`frames_started_q` at 10934 / 11958 / 12982 µs) while
+a bank fills in 114 µs — so the ADC side was parked ~90% of the time and the
+datapath never ran back to back. Whatever the cause (startup transient, or the
+fill side waiting on banks), the consequence is what matters: **an N=4 sim
+passing is not evidence of sustained operation at 9 MSa/s.** Re-measure the
+frame-start interval on the passing run before believing the rate; if it is not
+~114 µs, the sim is running the datapath at a duty cycle the hardware will not
+have.
+
+This is not fixable by protocol compliance. The options are the ones §1d
+already listed — more banks (deeper elastic buffer, which is what this branch
+is about), a lower sample rate, or accepting dropped frames — plus one that
+matters more now: a card qualified for the worst-case pause, not the average
+rate. Whatever is chosen, the N=4 sim passing is not evidence about it: the
+testbench ADC and the model card are both far away from the real operating
+point, in opposite directions.
+
+## §5 — CURRENT DESIGN: `SDCARD_PULSE`, capture first then stream
+
+> Live, alongside §0. §0 describes the SD-side session mechanism; this
+> section only changes *when* sessions are dispatched and how much SRAM one
+> session covers. Nothing in §0 is invalidated.
+
+`SDCARD_CONTINUOUS` (§0) buys unbounded capture length by overlapping
+capture with streaming, and pays for it with a hard real-time constraint:
+one `CMD25` session must complete within one bank fill, or the ADC catches
+up with a bank the engine has not released and `target_frame_full` trips
+`SDCARD_OVERFLOW`. §0b item 3 is the sharp end of that — at a spec-legal
+25 MHz the 4-bit bus gives 12.5 MB/s against the ADC's 16 MB/s, so the mode
+is only viable at all because `CMD6` high-speed puts the card at 25 MB/s.
+
+`SDCARD_PULSE` makes the opposite trade. The ADC fills F0, rolls straight
+on into F1, and stops; **only once both banks are full** does the copy
+engine run, streaming both of them out as a *single* `CMD25` session of 8 ×
+512 B blocks. Capture and streaming never overlap, so:
+
+- **There is no throughput requirement at all.** Not "more slack" — none.
+  The card can be arbitrarily slow; the pulse is already fully captured in
+  SRAM before the first block goes out. High speed becomes a
+  time-to-completion question rather than a correctness one.
+- **The capture is bounded at two banks** (4 KiB = 2048 samples). That is
+  the whole cost, and it is what makes the mode a *burst* rather than a
+  stream.
+- **Between pulses, samples are lost** while software re-arms. Inherent,
+  not a defect: a pulse is an event capture.
+
+### What is actually new in hardware
+
+Very little, deliberately — the SD-side sequence is byte-for-byte the §0
+one, including every fix §0a–§0d records.
+
+- **Dispatch condition** (`adc_acquisition_top.sv`): `sdcard_frames_ready`
+  is `F0_FULL && F1_FULL` in pulse mode instead of `F0_FULL || F1_FULL`.
+- **Job width** (`adc_acquisition_sdcard_controller.sv`): new `copy_both_i`,
+  latched at `start_i` like `copy_f0_i`. It widens `frame_words` to both
+  frames' word counts added together, and makes `CE_DONE` release both
+  banks.
+- **Read-base switch**: a both-banks job walks F0 for `first_bank_words_q`
+  words, then restarts from `F1_START_ADDR`. Explicitly, rather than
+  relying on F1 abutting F0 in the address map (it does — Bank2/Bank3 are
+  contiguous — but the two `Fx_*_ADDR` pairs stay independent registers, so
+  the engine should not silently depend on their values lining up). On the
+  wire it is one uninterrupted session: the card advances its own write
+  pointer per block and cannot tell the switch happened.
+- **Counter widths**: `frame_words`/`rd_idx`/`wr_idx` 11 → 12 bits (1024
+  words per job, plus the usual bit of headroom), and
+  `block_addr_advance_o`'s byte-mode concatenation retuned accordingly.
+- **No frame budget.** `frames_started_q` and `SDCARD_FRAME_COUNT` are
+  `SDCARD_CONTINUOUS`-only. Pulse mode's length is fixed at both banks, so
+  it sets `capture_done_q` directly at the F1 boundary. `SDCARD_FRAME_COUNT`
+  is *ignored* in this mode — `sw/test/test_adc_sdcard_pulse.c` sets it to 1
+  (a value that would stop a continuous capture after F0) specifically to
+  keep that true.
+
+### Why a separate mode and not `SDCARD_CONTINUOUS` with N=2
+
+They look adjacent — both fill exactly two banks — and they are not. Under
+`SDCARD_CONTINUOUS` with `SDCARD_FRAME_COUNT=2` the engine dispatches F0 the
+moment it fills, *while the ADC is still filling F1*, and writes two 4-block
+sessions. That is a different thing on the card (two sessions, two
+`AUTO_CMD12`s, two program cycles interleaved with capture) and it puts the
+card back in the real-time path for the F0 session. The distinguishing
+property of pulse mode is not the frame count, it is that **nothing is in
+flight while the ADC is running**. Sharing the ping-pong frame-budget
+machinery to express that would mean gating dispatch on a condition the
+budget does not encode.
+
+### Sequencing details worth knowing
+
+- **`is_last_frame_i` needs no special case.** `capture_done_q` is set at
+  the F1 boundary in the same cycle `F1_FULL` is raised — which is the same
+  cycle the job first becomes dispatchable — so it is already high when the
+  engine latches it. `SDCARD_DONE` therefore means what it always meant:
+  the capture's last frame is physically committed.
+- **Both banks are released only at `CE_DONE`**, not F0 when its words have
+  been read. `Fx_FULL` keeps meaning "this bank holds a captured frame the
+  consumer has not finished with", so an aborted session leaves both flags
+  set for software to see.
+- **`target_frame_full` cannot fire from reuse** here (each bank is written
+  once). It is kept as the guard against *starting* a pulse on top of a
+  bank whose `Fx_FULL` software never cleared.
+- **Re-arm is software's job**: `MODE` auto-reverts to `IDLE` on
+  `sdcard_done_set || sdcard_overflow_set` (that rule now covers both SD
+  modes), and `RESET_WRITE_HEAD` is what clears `capture_done_q`. See
+  `sw/sdcard_acquisition_pulse.c`'s loop. `SDCARD_BLOCK_ADDR` is
+  deliberately not reset between pulses, so consecutive pulses land back to
+  back on the card.
+
+### Not yet verified
+
+Written and reviewed, not simulated (no toolchain in the authoring
+environment). What to look at first in a run:
+
+- `test_adc_sdcard_pulse.c` end to end — its CMD17 readback of all 8 blocks
+  against SRAM is the real check on the F0→F1 base switch: a switch off by
+  one word misaligns everything from block 4 on, a switch that never
+  happened writes F0 twice.
+- That exactly *one* `CMD25` goes out per pulse (not two), with
+  `BLOCK_COUNT=8`, and that `SDCARD_BLOCK_ADDR` advances once per pulse.
+  `scripts/analyze_sdcard_wave.py` prints per-job timelines and the card's
+  decoded commands.
+- `NUM_PULSES > 1` in `sw/sdcard_acquisition_pulse.c` for the re-arm path —
+  the one sequence with no prior art here, since every earlier SD flow ran
+  a capture exactly once per program.
+
+**One number to revisit on real silicon: `POLL_TIMEOUT`.** It is left
+unchanged at 25M cycles (250 ms at 100 MHz), but note what pulse mode does
+to the wait it bounds. `CE_WAIT_TRANSFER_COMPLETE`'s counter is not reset
+per block — it spans the *whole* session including every inter-block
+program cycle — and a pulse session is 8 blocks where the continuous mode's
+is 4. If the SD spec's 250 ms is read as per-block rather than per-write,
+even the 4-block session was already under-provisioned against a
+pathological card; pulse mode doubles that exposure. Not changed here
+because it is not specific to this mode and the failure it would cause
+(a healthy slow transfer aborting as `SDCARD_OVERFLOW`) has not been
+observed — but it is the first thing to suspect if a real card reports
+overflow on a transfer that visibly completed.
+
+## §1 — SUPERSEDED (see §0): multi-block `CMD25` abandoned in favor of per-block `CMD24`
 
 The original §1/§1b design (BWR-vs-`TRANSFER_COMPLETE` race inside one
 `CMD25(BLOCK_COUNT=N)` session) was implemented, then abandoned after
@@ -264,11 +803,13 @@ typically use) and is strictly more informative, but it needs the card's
 have meant a new RDL field plus a register regen. DAT0-level polling gets
 the same guarantee from a register the engine already reads.
 
-**Caveat carried forward — `POLL_TIMEOUT`.** 500k cycles (~5 ms at
+**Caveat carried forward — `POLL_TIMEOUT`.** ~~500k cycles (~5 ms at
 100 MHz) is comfortable against this model's ~500-cycle busy, but a real
 card may legitimately take ~250 ms for a single-block write. This is now
 the one wait whose duration is set by flash programming rather than bus
-turnaround — raise `POLL_TIMEOUT` before running against real silicon.
+turnaround — raise `POLL_TIMEOUT` before running against real silicon.~~
+**Resolved** in §0b: `POLL_TIMEOUT` is now 25M cycles (250 ms at 100 MHz)
+and the counter widened to 25 bits.
 
 **Throughput headroom at N > 2 — checked, fine.** `busy_o` now honestly
 covers the card's program time, so a job is ~500 cycles longer, and the
@@ -335,7 +876,7 @@ written this cycle" — five sites in `adc_acquisition_top.sv`:
 `f0_frame_just_filled` (used by `SINGLE_ACQ_F0`'s `F0_FULL` *and* by the
 auto-stop that reverts `MODE` to `IDLE`, which had the same one-word-early
 problem), plus the inlined F0/F1 comparisons in `CONTINUOUS_ACQ_F0_F1` and
-`ACQ_SDCARD`. The inlined ones use `dma_push` directly, which is already
+the SD modes. The inlined ones use `dma_push` directly, which is already
 assigned at that point in the block; `f0_frame_just_filled` is a
 continuous assign *outside* that `always_comb`, so it uses
 `adc_data_word_ready` (the CDC FIFO output `dma_push` is derived from)
@@ -355,15 +896,22 @@ into the gap.
 
 New register, one bit, `BLOCK_UNITS` (sw=rw, hw=r, default 1): `1` =
 block addressing (SDHC/SDXC-style — `SDCARD_BLOCK_ADDR` is a raw block
-number, CMD24 argument used as-is, advances by `+1`); `0` = byte
-addressing (standard-capacity-style — argument still used as-is,
-advances by this frame's byte count, derived from the same
-`frame_words_q` used for `BLOCK_SIZE` so block size has one source of
-truth). `SDCARD_BLOCK_ADDR` itself already existed but was previously
-inert (an informational counter only) — it's now the actual CMD24
-argument.
+number, `CMD25` argument used as-is, advances by `SDCARD_BLOCK_COUNT`);
+`0` = byte addressing (standard-capacity-style — argument still used
+as-is, advances by this frame's byte count, derived from
+`frame_words_q`). `SDCARD_BLOCK_ADDR` itself already existed but was
+previously inert (an informational counter only) — it's now the actual
+`CMD25` argument.
+
+Updated for §0: the advance is per *session*, not per block. Within a
+`CMD25` session the card advances its own write pointer, so only the
+session's starting address is ever sent.
 
 ## §2 — Mode collapse: `ACQ_SDCARD`
+
+> Historical. `ACQ_SDCARD` was later renamed `SDCARD_CONTINUOUS` when
+> `SDCARD_PULSE` joined it (§5); the names below are the ones in use at the
+> time.
 
 - `adc_acquisition_reg_definition.rdl`: single `ACQ_SDCARD` enum value
   (decide: drop `SINGLE_SDCARD` value, or alias for compat — open q).
@@ -442,11 +990,14 @@ pivot removed `BLOCK_COUNT`/multi-block sessions entirely.
 ## §4 — Concepts parked, not scoped yet
 
 - ~~Expose `dat_write.sv`'s internal `write_done` as a new SDHCI status
-  bit~~ — moot, §1's `CMD24` pivot achieves true per-block completion
-  without touching the `sdhci` IP at all.
-- ~~Chunked sessions (auto close/reopen `CMD25` every K frames)~~ — moot,
-  per-block `CMD24` already gives a durability checkpoint every single
-  frame, finer-grained than any chunk size could.
+  bit~~ — moot either way: §1's `CMD24` pivot achieved per-block
+  completion without touching the `sdhci` IP, and §0 no longer needs
+  per-block completion at all.
+- Chunked sessions (close/reopen `CMD25` every K blocks): reopened by §0.
+  The durability checkpoint is now one per *session* (one bank), not one
+  per block as under §1's `CMD24`. If a shorter checkpoint interval is
+  ever wanted, it is a `SDCARD_BLOCK_COUNT` reduction plus more sessions
+  per bank — not a new mechanism.
 - 3rd SRAM bank: more burst slack, doesn't raise sustained throughput
   ceiling.
 - Truly unbounded capture (no upper bound on `SDCARD_FRAME_COUNT`,
@@ -520,7 +1071,7 @@ Decisions (resolving the prior open questions):
   `target_frame_full` check `ACQ_SDCARD`'s case has.
 - Already covered by Step 1 (`WORDS_PER_BLOCK`).
 
-### Step 4 — Verification (updated for the `CMD24` design, §1/§1b)
+### Step 4 — Verification (written for the `CMD24` design, §1/§1b; see §0 for what the `CMD25` session changes)
 - `verilator/` sim (`rtl/test/tb_croc_pkg.sv` + `sdModel.v`) against:
   N=1, N=2, N=3+ continuous — every frame now takes the identical path
   (issue `CMD24` → data phase → real `TRANSFER_COMPLETE`), so there's no

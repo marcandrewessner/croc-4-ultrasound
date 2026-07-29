@@ -5,7 +5,7 @@ package adc_acquisition_reg_pkg;
 
     localparam ADC_ACQUISITION_REG_DATA_WIDTH = 32;
     localparam ADC_ACQUISITION_REG_MIN_ADDR_WIDTH = 6;
-    localparam ADC_ACQUISITION_REG_SIZE = 'h2c;
+    localparam ADC_ACQUISITION_REG_SIZE = 'h34;
 
     typedef struct {
         logic next;
@@ -146,6 +146,22 @@ package adc_acquisition_reg_pkg;
     } adc_acquisition_reg__SDCARD_FRAME_COUNT__out_t;
 
     typedef struct {
+        logic [11:0] value;
+    } adc_acquisition_reg__SDCARD_BLOCK_SIZE__BLOCK_SIZE__out_t;
+
+    typedef struct {
+        adc_acquisition_reg__SDCARD_BLOCK_SIZE__BLOCK_SIZE__out_t BLOCK_SIZE;
+    } adc_acquisition_reg__SDCARD_BLOCK_SIZE__out_t;
+
+    typedef struct {
+        logic [15:0] value;
+    } adc_acquisition_reg__SDCARD_BLOCK_COUNT__BLOCK_COUNT__out_t;
+
+    typedef struct {
+        adc_acquisition_reg__SDCARD_BLOCK_COUNT__BLOCK_COUNT__out_t BLOCK_COUNT;
+    } adc_acquisition_reg__SDCARD_BLOCK_COUNT__out_t;
+
+    typedef struct {
         logic value;
     } adc_acquisition_reg__SDCARD_ADDR_MODE__BLOCK_UNITS__out_t;
 
@@ -164,6 +180,8 @@ package adc_acquisition_reg_pkg;
         adc_acquisition_reg__address_config_r__out_t F1_END_ADDR;
         adc_acquisition_reg__SDCARD_BLOCK_ADDR__out_t SDCARD_BLOCK_ADDR;
         adc_acquisition_reg__SDCARD_FRAME_COUNT__out_t SDCARD_FRAME_COUNT;
+        adc_acquisition_reg__SDCARD_BLOCK_SIZE__out_t SDCARD_BLOCK_SIZE;
+        adc_acquisition_reg__SDCARD_BLOCK_COUNT__out_t SDCARD_BLOCK_COUNT;
         adc_acquisition_reg__SDCARD_ADDR_MODE__out_t SDCARD_ADDR_MODE;
     } adc_acquisition_reg__out_t;
 
@@ -171,6 +189,7 @@ package adc_acquisition_reg_pkg;
         adc_mode__IDLE = 'h0,
         adc_mode__SINGLE_ACQ_F0 = 'h4,
         adc_mode__CONTINUOUS_ACQ_F0_F1 = 'h10,
-        adc_mode__ACQ_SDCARD = 'h18
+        adc_mode__SDCARD_CONTINUOUS = 'h18,
+        adc_mode__SDCARD_PULSE = 'h1c
     } adc_mode_e;
 endpackage

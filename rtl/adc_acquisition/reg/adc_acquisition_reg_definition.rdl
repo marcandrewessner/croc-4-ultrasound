@@ -3,14 +3,32 @@ enum adc_mode {
   IDLE                 = 0x00;
   SINGLE_ACQ_F0        = 0x04;
   CONTINUOUS_ACQ_F0_F1 = 0x10;
-  // ping-pong F0/F1 with HW copy to SDCard. The copy engine issues its own
-  // CMD24 (WRITE_BLOCK) per frame, back to back -- software only needs to
-  // configure SDCARD_FRAME_COUNT (how many frames to capture),
-  // SDCARD_BLOCK_ADDR (starting address) and SDCARD_ADDR_MODE (addressing
-  // units) before enabling this mode. 1 frame behaves like the old
-  // SINGLE_SDCARD, N frames like the old CONTINUOUS_SDCARD -- same
-  // mechanism either way.
-  ACQ_SDCARD           = 0x18;
+  // Ping-pong F0/F1 with HW copy to SDCard, capture and streaming
+  // overlapped. A frame is one whole SRAM bank, holding SDCARD_BLOCK_COUNT
+  // blocks of SDCARD_BLOCK_SIZE bytes, and the copy engine streams each
+  // filled frame out as a single CMD25 (WRITE_MULTIPLE_BLOCK) session closed
+  // by AUTO_CMD12. The ADC fills one bank while the engine streams the
+  // other, so capture is continuous -- which requires the card to keep up
+  // with the ADC in real time (one session must finish within one bank
+  // fill), else SDCARD_OVERFLOW. Software configures SDCARD_BLOCK_SIZE /
+  // SDCARD_BLOCK_COUNT (the per-frame session geometry),
+  // SDCARD_FRAME_COUNT (how many frames to capture), SDCARD_BLOCK_ADDR
+  // (starting address) and SDCARD_ADDR_MODE (addressing units) before
+  // enabling this mode.
+  SDCARD_CONTINUOUS    = 0x18;
+  // One-shot burst ("pulse") capture to SDCard: the ADC fills F0, then F1,
+  // and only once *both* banks are full does the copy engine run, streaming
+  // both of them out back to back as a single CMD25 session covering the
+  // whole 4 KiB (8 x 512 B blocks) -- same session mechanism as
+  // SDCARD_CONTINUOUS, just one session spanning two banks instead of one
+  // session per bank. Nothing is streamed while the ADC is capturing, so
+  // there is no real-time throughput requirement at all: the capture is
+  // limited in length (both banks) instead of limited in rate. SDCARD_DONE
+  // fires when the session is physically committed and MODE auto-reverts to
+  // IDLE; software re-arms for the next pulse. SDCARD_FRAME_COUNT is
+  // ignored -- the capture length is fixed at both banks -- but
+  // SDCARD_BLOCK_COUNT must cover both (8 for full banks).
+  SDCARD_PULSE         = 0x1c;
 };
 
 
@@ -78,7 +96,7 @@ addrmap adc_acquisition_reg {
 
     field {
       name = "sdcard_done";
-      desc = "HW copy engine finished transferring a frame into the SDHCI buffer. Clear with CLEAR_STATUS.";
+      desc = "HW copy engine finished the capture's last frame: its CMD25 session completed, AUTO_CMD12 closed it and the card released DAT0, so every block is physically committed. Clear with CLEAR_STATUS.";
       hw   = rw;
       sw   = r;
     } SDCARD_DONE = 0;
@@ -141,10 +159,10 @@ addrmap adc_acquisition_reg {
 
   reg {
     name = "SDCard Block Address";
-    desc = "Current CMD24 argument for the HW copy engine in ACQ_SDCARD mode. Software sets the starting value; hardware advances it after each block by the amount SDCARD_ADDR_MODE selects (see there). Units (block number vs. byte address) are also selected by SDCARD_ADDR_MODE.";
+    desc = "Current CMD25 argument for the HW copy engine in the SDCARD_* modes. Software sets the starting value; hardware advances it after each completed session by the amount SDCARD_ADDR_MODE selects (see there). Units (block number vs. byte address) are also selected by SDCARD_ADDR_MODE. Note the card itself advances internally across the blocks within one CMD25 session -- this register is only written once per session, at its start.";
     field {
       name = "Block Address";
-      desc = "CMD24 argument -- a block number or a byte address, per SDCARD_ADDR_MODE";
+      desc = "CMD25 argument -- a block number or a byte address, per SDCARD_ADDR_MODE";
       hw   = rw;
       sw   = rw;
     } BLOCK_ADDR[31:0] = 0;
@@ -152,7 +170,7 @@ addrmap adc_acquisition_reg {
 
   reg {
     name = "SDCard Frame Count";
-    desc = "Number of frames the ADC-fill side may dispatch to the HW copy engine in ACQ_SDCARD mode before it stops raising Fx_FULL, independent of how long dispatched jobs take to physically finish. Each frame is written with its own CMD24 (WRITE_BLOCK); this is the only place the total frame count is configured.";
+    desc = "Number of frames the ADC-fill side may dispatch to the HW copy engine in SDCARD_CONTINUOUS mode before it stops raising Fx_FULL, independent of how long dispatched jobs take to physically finish. A frame is one whole SRAM bank, streamed out as one CMD25 session of SDCARD_BLOCK_COUNT blocks; this is the only place the total frame count is configured. Ignored in SDCARD_PULSE mode, whose capture length is fixed at both banks.";
     field {
       name = "Frame Count";
       desc = "Target frame count for the current SDCard capture (N)";
@@ -162,11 +180,33 @@ addrmap adc_acquisition_reg {
   } SDCARD_FRAME_COUNT;
 
   reg {
+    name = "SDCard Block Size";
+    desc = "Bytes per SD block, written by the HW copy engine into SDHCI BLOCK_SIZE at the start of every CMD25 session. Must be 512 for SDHC/SDXC cards, which fix the write block length. Software must keep this consistent with the session geometry: SDCARD_BLOCK_SIZE * SDCARD_BLOCK_COUNT must equal the session's byte count -- one frame (F0_END_ADDR - F0_START_ADDR + 4) in SDCARD_CONTINUOUS mode, both frames added together in SDCARD_PULSE mode.";
+    field {
+      name = "Block Size";
+      desc = "Bytes per SD block (SDHCI BLOCK_SIZE.transfer_block_size is 12 bits)";
+      hw   = r;
+      sw   = rw;
+    } BLOCK_SIZE[11:0] = 512;
+  } SDCARD_BLOCK_SIZE;
+
+  reg {
+    name = "SDCard Block Count";
+    desc = "Number of blocks in one CMD25 session. In SDCARD_CONTINUOUS mode a session covers one frame (one SRAM bank), so this is the blocks per bank (4 for a full 2 KiB bank); in SDCARD_PULSE mode the single session covers *both* banks, so it is the blocks in F0 plus F1 (8 for two full banks). Written by the HW copy engine into SDHCI BLOCK_COUNT at the start of every session, with block-count-enable set so the controller ends the session -- and raises TRANSFER_COMPLETE -- after exactly this many blocks. Also the amount SDCARD_BLOCK_ADDR advances per session when SDCARD_ADDR_MODE selects block units.";
+    field {
+      name = "Block Count";
+      desc = "Blocks per CMD25 session (SDHCI BLOCK_COUNT is 16 bits)";
+      hw   = r;
+      sw   = rw;
+    } BLOCK_COUNT[15:0] = 4;
+  } SDCARD_BLOCK_COUNT;
+
+  reg {
     name = "SDCard Address Mode";
     desc = "Selects how SDCARD_BLOCK_ADDR is interpreted and advanced by the HW copy engine.";
     field {
       name = "Block Units";
-      desc = "1 = block addressing (SDHC/SDXC-style): SDCARD_BLOCK_ADDR is a raw block number, advanced by 1 per block. 0 = byte addressing (standard-capacity-style): SDCARD_BLOCK_ADDR is a byte address, advanced by this frame's byte count per block.";
+      desc = "1 = block addressing (SDHC/SDXC-style): SDCARD_BLOCK_ADDR is a raw block number, advanced by SDCARD_BLOCK_COUNT per completed session. 0 = byte addressing (standard-capacity-style): SDCARD_BLOCK_ADDR is a byte address, advanced by the frame's byte count per completed session.";
       hw   = r;
       sw   = rw;
     } BLOCK_UNITS = 1;

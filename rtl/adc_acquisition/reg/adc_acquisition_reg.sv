@@ -133,6 +133,8 @@ module adc_acquisition_reg #(
         logic F1_END_ADDR;
         logic SDCARD_BLOCK_ADDR;
         logic SDCARD_FRAME_COUNT;
+        logic SDCARD_BLOCK_SIZE;
+        logic SDCARD_BLOCK_COUNT;
         logic SDCARD_ADDR_MODE;
     } decoded_reg_strb_t;
     decoded_reg_strb_t decoded_reg_strb;
@@ -158,7 +160,9 @@ module adc_acquisition_reg #(
         decoded_reg_strb.F1_END_ADDR = cpuif_req_masked & (cpuif_addr == 6'h1c) & cpuif_req_is_wr;
         decoded_reg_strb.SDCARD_BLOCK_ADDR = cpuif_req_masked & (cpuif_addr == 6'h20);
         decoded_reg_strb.SDCARD_FRAME_COUNT = cpuif_req_masked & (cpuif_addr == 6'h24) & cpuif_req_is_wr;
-        decoded_reg_strb.SDCARD_ADDR_MODE = cpuif_req_masked & (cpuif_addr == 6'h28);
+        decoded_reg_strb.SDCARD_BLOCK_SIZE = cpuif_req_masked & (cpuif_addr == 6'h28);
+        decoded_reg_strb.SDCARD_BLOCK_COUNT = cpuif_req_masked & (cpuif_addr == 6'h2c);
+        decoded_reg_strb.SDCARD_ADDR_MODE = cpuif_req_masked & (cpuif_addr == 6'h30);
         decoded_err = '0;
     end
 
@@ -263,6 +267,18 @@ module adc_acquisition_reg #(
         } SDCARD_FRAME_COUNT;
         struct {
             struct {
+                logic [11:0] next;
+                logic load_next;
+            } BLOCK_SIZE;
+        } SDCARD_BLOCK_SIZE;
+        struct {
+            struct {
+                logic [15:0] next;
+                logic load_next;
+            } BLOCK_COUNT;
+        } SDCARD_BLOCK_COUNT;
+        struct {
+            struct {
                 logic next;
                 logic load_next;
             } BLOCK_UNITS;
@@ -342,6 +358,16 @@ module adc_acquisition_reg #(
                 logic [31:0] value;
             } FRAME_COUNT;
         } SDCARD_FRAME_COUNT;
+        struct {
+            struct {
+                logic [11:0] value;
+            } BLOCK_SIZE;
+        } SDCARD_BLOCK_SIZE;
+        struct {
+            struct {
+                logic [15:0] value;
+            } BLOCK_COUNT;
+        } SDCARD_BLOCK_COUNT;
         struct {
             struct {
                 logic value;
@@ -759,6 +785,52 @@ module adc_acquisition_reg #(
         end
     end
     assign hwif_out.SDCARD_FRAME_COUNT.FRAME_COUNT.value = field_storage.SDCARD_FRAME_COUNT.FRAME_COUNT.value;
+    // Field: adc_acquisition_reg.SDCARD_BLOCK_SIZE.BLOCK_SIZE
+    always_comb begin
+        automatic logic [11:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.SDCARD_BLOCK_SIZE.BLOCK_SIZE.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.SDCARD_BLOCK_SIZE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.SDCARD_BLOCK_SIZE.BLOCK_SIZE.value & ~decoded_wr_biten[11:0]) | (decoded_wr_data[11:0] & decoded_wr_biten[11:0]);
+            load_next_c = '1;
+        end
+        field_combo.SDCARD_BLOCK_SIZE.BLOCK_SIZE.next = next_c;
+        field_combo.SDCARD_BLOCK_SIZE.BLOCK_SIZE.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.SDCARD_BLOCK_SIZE.BLOCK_SIZE.value <= 12'h200;
+        end else begin
+            if(field_combo.SDCARD_BLOCK_SIZE.BLOCK_SIZE.load_next) begin
+                field_storage.SDCARD_BLOCK_SIZE.BLOCK_SIZE.value <= field_combo.SDCARD_BLOCK_SIZE.BLOCK_SIZE.next;
+            end
+        end
+    end
+    assign hwif_out.SDCARD_BLOCK_SIZE.BLOCK_SIZE.value = field_storage.SDCARD_BLOCK_SIZE.BLOCK_SIZE.value;
+    // Field: adc_acquisition_reg.SDCARD_BLOCK_COUNT.BLOCK_COUNT
+    always_comb begin
+        automatic logic [15:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.SDCARD_BLOCK_COUNT.BLOCK_COUNT.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.SDCARD_BLOCK_COUNT && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.SDCARD_BLOCK_COUNT.BLOCK_COUNT.value & ~decoded_wr_biten[15:0]) | (decoded_wr_data[15:0] & decoded_wr_biten[15:0]);
+            load_next_c = '1;
+        end
+        field_combo.SDCARD_BLOCK_COUNT.BLOCK_COUNT.next = next_c;
+        field_combo.SDCARD_BLOCK_COUNT.BLOCK_COUNT.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.SDCARD_BLOCK_COUNT.BLOCK_COUNT.value <= 16'h4;
+        end else begin
+            if(field_combo.SDCARD_BLOCK_COUNT.BLOCK_COUNT.load_next) begin
+                field_storage.SDCARD_BLOCK_COUNT.BLOCK_COUNT.value <= field_combo.SDCARD_BLOCK_COUNT.BLOCK_COUNT.next;
+            end
+        end
+    end
+    assign hwif_out.SDCARD_BLOCK_COUNT.BLOCK_COUNT.value = field_storage.SDCARD_BLOCK_COUNT.BLOCK_COUNT.value;
     // Field: adc_acquisition_reg.SDCARD_ADDR_MODE.BLOCK_UNITS
     always_comb begin
         automatic logic [0:0] next_c;
@@ -820,6 +892,12 @@ module adc_acquisition_reg #(
             readback_data_var[31:0] = field_storage.SDCARD_BLOCK_ADDR.BLOCK_ADDR.value;
         end
         if(rd_mux_addr == 6'h28) begin
+            readback_data_var[11:0] = field_storage.SDCARD_BLOCK_SIZE.BLOCK_SIZE.value;
+        end
+        if(rd_mux_addr == 6'h2c) begin
+            readback_data_var[15:0] = field_storage.SDCARD_BLOCK_COUNT.BLOCK_COUNT.value;
+        end
+        if(rd_mux_addr == 6'h30) begin
             readback_data_var[0] = field_storage.SDCARD_ADDR_MODE.BLOCK_UNITS.value;
         end
         readback_data = readback_data_var;
