@@ -26,30 +26,26 @@
 #define SDH_TIMEOUT 10000U   // CLINT ticks (~300 ms at 32 kHz)
 
 // SIM_CARD: 1 = building against rtl/test/sdcard/model/sdModel.v, 0 = real
-// SDHC/SDXC card. Build with -DSIM_CARD=0 for silicon. This is the single
-// switch for every place the model and a real card genuinely need different
-// behaviour (see also SDCARD_ADDR_IS_BLOCKS in sw/sdcard_acquisition_Nx.c).
+// SDHC/SDXC card. Build with -DSIM_CARD=0 for silicon (this is the sw/
+// Makefile's default; pass SIM_CARD=1 when building for the Verilator sim
+// flow instead). This is the single switch for every place the model and a
+// real card genuinely need different behaviour.
 //
-// What it gates here is the CMD6 SWITCH_FUNC high-speed negotiation:
+// What it gates here is sdh_card_is_block_addressed()'s answer: a real card
+// says whatever its own OCR CCS bit says (see sdh_ccs below), but
+// sdModel.v is the exception and needs an override -- it advertises CCS=1
+// in its OCR but its CMD25 handler indexes FLASHmem with the raw argument
+// as a byte address, so it claims high capacity and then behaves like a
+// standard-capacity card. See sdh_card_is_block_addressed() for the detail.
 //
-//  - Real card: mandatory. Without it the card stays in default speed
-//    (25 MHz ceiling) and clocking the bus at 50 MHz is out of spec; running
-//    in-spec at 25 MHz instead caps the 4-bit bus at 12.5 MB/s, below the
-//    ADC's 16 MB/s, so SDCARD_CONTINUOUS would overflow by construction. A failed
-//    switch is therefore a hard init failure, not a fallback.
-//
-//  - Model: skipped entirely, and it has to be. sdModel.v has no SWITCH_FUNC
-//    handler at all -- its `6:` case only accepts the ACMD6 form (gated on
-//    lastCMD == 55) and otherwise returns no response. Issuing CMD6 anyway is
-//    NOT a cheap failure: it is a data command, so the DAT line parks in a
-//    read waiting for a 64-byte block that never arrives, and only the SDHCI
-//    data timeout releases it -- 1.34 s of simulated time at SDHC_TIMEOUT_MAX,
-//    which is hours of wall clock under Verilator. The software-side spin
-//    timeouts give up long before the hardware does, so everything after it
-//    inherits a hung DAT line. The model does not police bus timing, so
-//    skipping the switch and clocking 50 MHz is correct there.
+// (This header used to also gate a CMD6 SWITCH_FUNC High Speed negotiation
+// here, mirroring how sdModel.v has no SWITCH_FUNC handler at all and would
+// hang on it -- see sdh_switch_func() below. That negotiation isn't called
+// from sdh_init() right now: this design's SD clock generator can't reach
+// 50MHz against the current 50MHz system clock regardless -- see sdh_init()
+// -- so it would buy nothing yet. Kept defined for when that's revisited.)
 #ifndef SIM_CARD
-#define SIM_CARD 1
+#define SIM_CARD 0
 #endif
 
 // Card Capacity Status from the ACMD41 response, valid after sdh_init().
@@ -76,6 +72,18 @@ static inline int sdh_spin_until_clear32(int off, uint32_t mask) {
     uint64_t end = clint_get_mtime() + SDH_TIMEOUT;
     while (*reg32(SDH_BASE, off) & mask)
         if (clint_get_mtime() >= end) return -1;
+    return 0;
+}
+
+// Numeric step code instead of a unique string per checkpoint: the same
+// reasoning as sw/sdcard_test.c's ok()/fail() -- this header is included
+// into programs that also have their own logic, and sw/link.ld only gives
+// each program 3584 bytes of SRAM (see its SRAM/STACK split) to work with.
+// Grep this file for the step number to find the checkpoint. Always
+// returns 0, matching what every sdh_init() call site wants to return on
+// failure anyway.
+static inline uint32_t sdh_fail(int step, uint32_t detail) {
+    printf("SDH FAIL=%x:%x\n", step, detail);
     return 0;
 }
 
@@ -157,26 +165,22 @@ static inline uint32_t sdh_card_is_block_addressed(void) {
 #endif
 }
 
-// Full card bring-up: reset, identify, select, 4-bit bus, high speed,
-// 512 B block length.
+// Full card bring-up: reset, identify, select, 4-bit bus, 512 B block length.
 // Returns the 16-bit RCA on success, 0 on failure (reason printed).
 static inline uint32_t sdh_init(void) {
     *reg8(SDH_BASE, SDHC_SOFTWARE_RESET) = SDHC_RESET_ALL;
-    if (sdh_spin_until_clear8(SDHC_SOFTWARE_RESET, SDHC_RESET_ALL)) {
-        printf("FAIL: sdh reset\n"); return 0;
-    }
+    if (sdh_spin_until_clear8(SDHC_SOFTWARE_RESET, SDHC_RESET_ALL))
+        return sdh_fail(1, 0);
 
     *reg16(SDH_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE;
-    if (sdh_spin_until_set16(SDHC_CLOCK_CTL, SDHC_INTCLK_STABLE)) {
-        printf("FAIL: sdh intclk\n"); return 0;
-    }
+    if (sdh_spin_until_set16(SDHC_CLOCK_CTL, SDHC_INTCLK_STABLE))
+        return sdh_fail(2, 0);
     // Program the identification-speed divider with SD_CLOCK_EN still 0 --
     // sd_clk_generator only latches a new divider while the SD clock is
     // disabled -- then wait for it to load before starting the clock.
     *reg16(SDH_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE | SDHC_SDCLK_DIV(128);
-    if (sdh_spin_until_set16(SDHC_CLOCK_CTL, SDHC_INTCLK_STABLE)) {
-        printf("FAIL: sdh sdclk div\n"); return 0;
-    }
+    if (sdh_spin_until_set16(SDHC_CLOCK_CTL, SDHC_INTCLK_STABLE))
+        return sdh_fail(3, 0);
     // Bus power before the clock, then let the card see clock for a while
     // before the first command. The SD spec requires at least 74 SD clocks
     // supplied to the card after power is stable and before CMD0, and allows
@@ -194,23 +198,20 @@ static inline uint32_t sdh_init(void) {
     *reg16(SDH_BASE, SDHC_EINTR_STATUS_EN) = SDHC_EINTR_STATUS_MASK;
 
     // CMD0: GO_IDLE_STATE (no response)
-    if (sdh_spin_until_clear32(SDHC_PRESENT_STATE, SDHC_CMD_INHIBIT_CMD)) {
-        printf("FAIL: CMD0 inh\n"); return 0;
-    }
+    if (sdh_spin_until_clear32(SDHC_PRESENT_STATE, SDHC_CMD_INHIBIT_CMD))
+        return sdh_fail(4, 0);
     *reg32(SDH_BASE, SDHC_ARGUMENT) = 0;
     *reg16(SDH_BASE, SDHC_COMMAND)  = (0 << SDHC_COMMAND_INDEX_SHIFT) | SDHC_NO_RESPONSE;
-    if (sdh_spin_until_set16(SDHC_NINTR_STATUS, SDHC_COMMAND_COMPLETE)) {
-        printf("FAIL: CMD0\n"); return 0;
-    }
+    if (sdh_spin_until_set16(SDHC_NINTR_STATUS, SDHC_COMMAND_COMPLETE))
+        return sdh_fail(5, 0);
     *reg16(SDH_BASE, SDHC_NINTR_STATUS) = SDHC_COMMAND_COMPLETE;
 
     // CMD8: SEND_IF_COND
     int r = sdh_cmd(8, 0x000001AA,
         SDHC_CRC_CHECK_ENABLE | SDHC_INDEX_CHECK_ENABLE | SDHC_RESP_LEN_48);
-    if (r) { printf("FAIL: CMD8=%x\n", r); return 0; }
-    if ((*reg32(SDH_BASE, SDHC_RESPONSE) & 0xFF) != 0xAA) {
-        printf("FAIL: CMD8 echo\n"); return 0;
-    }
+    if (r) return sdh_fail(6, r);
+    if ((*reg32(SDH_BASE, SDHC_RESPONSE) & 0xFF) != 0xAA)
+        return sdh_fail(7, 0);
 
     // ACMD41 loop: wait for the card to finish powering up (OCR bit 31).
     // Bounded by time, not by iteration count: the spec gives the card up to
@@ -222,15 +223,15 @@ static inline uint32_t sdh_init(void) {
     for (;;) {
         r = sdh_cmd(55, 0,
             SDHC_CRC_CHECK_ENABLE | SDHC_INDEX_CHECK_ENABLE | SDHC_RESP_LEN_48);
-        if (r) { printf("FAIL: CMD55=%x\n", r); return 0; }
+        if (r) return sdh_fail(8, r);
         r = sdh_cmd(41, 0x40FF8000, SDHC_RESP_LEN_48);
-        if (r) { printf("FAIL: ACMD41=%x\n", r); return 0; }
+        if (r) return sdh_fail(9, r);
         ocr = *reg32(SDH_BASE, SDHC_RESPONSE);
         if (ocr & (1u << 31)) break;
         if (clint_get_mtime() >= ocr_deadline) break;
         clint_spin_ticks(5);
     }
-    if (!(ocr & (1u << 31))) { printf("FAIL: OCR=%x\n", ocr); return 0; }
+    if (!(ocr & (1u << 31))) return sdh_fail(10, ocr);
 
     // OCR bit 30 (CCS) is what decides how the card wants to be addressed:
     // 1 = SDHC/SDXC, arguments are block numbers; 0 = standard capacity,
@@ -241,18 +242,18 @@ static inline uint32_t sdh_init(void) {
 
     // CMD2: ALL_SEND_CID
     r = sdh_cmd(2, 0, SDHC_CRC_CHECK_ENABLE | SDHC_RESP_LEN_136);
-    if (r) { printf("FAIL: CMD2=%x\n", r); return 0; }
+    if (r) return sdh_fail(11, r);
 
     // CMD3: SEND_RELATIVE_ADDR
     r = sdh_cmd(3, 0,
         SDHC_CRC_CHECK_ENABLE | SDHC_INDEX_CHECK_ENABLE | SDHC_RESP_LEN_48);
-    if (r) { printf("FAIL: CMD3=%x\n", r); return 0; }
+    if (r) return sdh_fail(12, r);
     uint32_t rca = (*reg32(SDH_BASE, SDHC_RESPONSE) >> 16) & 0xFFFF;
 
     // CMD7: SELECT_CARD
     r = sdh_cmd(7, rca << 16,
         SDHC_CRC_CHECK_ENABLE | SDHC_INDEX_CHECK_ENABLE | SDHC_RESP_LEN_48_CHK_BUSY);
-    if (r) { printf("FAIL: CMD7=%x\n", r); return 0; }
+    if (r) return sdh_fail(13, r);
 
     // ACMD6: SET_BUS_WIDTH = 4 bits. This tells the *card* to listen on
     // DAT[3:0]; the host-side HOST_CTL write below only changes what the
@@ -266,70 +267,29 @@ static inline uint32_t sdh_init(void) {
     // the card expects it.
     r = sdh_cmd(55, rca << 16,
         SDHC_CRC_CHECK_ENABLE | SDHC_INDEX_CHECK_ENABLE | SDHC_RESP_LEN_48);
-    if (r) { printf("FAIL: CMD55(ACMD6)=%x\n", r); return 0; }
+    if (r) return sdh_fail(14, r);
     r = sdh_cmd(6, 2,
         SDHC_CRC_CHECK_ENABLE | SDHC_INDEX_CHECK_ENABLE | SDHC_RESP_LEN_48);
-    if (r) { printf("FAIL: ACMD6=%x\n", r); return 0; }
+    if (r) return sdh_fail(15, r);
 
     // Switch host controller to 4-bit bus mode (card already switched above)
     *reg8(SDH_BASE, SDHC_HOST_CTL) = SDHC_4BIT_MODE;
 
-    // CMD6: switch to High Speed (50 MHz) before raising the clock. Check
-    // first, then set -- a card that does not support the function must not be
-    // switched blind.
-    //
-    // Status layout (SD Physical Layer spec, 512 bits, bit 511 first on the
-    // wire): [415:400] is group 1's support bitmap (bit 400 = function 0, so
-    // High Speed = function 1 = bit 401) and [379:376] is the function
-    // actually selected by a set.
-    //
-    // Mapping those to the words BUFFER_DATA_PORT hands back is where this is
-    // easy to get wrong, and it cannot be checked in simulation -- sdModel.v
-    // has no SWITCH_FUNC handler, so nothing in a sim run reaches this code.
-    // Derived instead from the RTL that packs the words, dat_read.sv: each
-    // received byte enters the build-up register at [31:24] and the register
-    // shifts right by 8, so the *first* byte of each group of four ends up in
-    // the word's [7:0]. That is little-endian byte order (and matches the
-    // SDHCI spec's byte-stream data port), i.e. the opposite of reading the
-    // status as big-endian 32-bit words. So with byte b = bits [511-8b:504-8b]
-    // landing in word b/4, lane b%4:
-    //   group 1 support [415:400] = bytes 12,13 -> sw[3][15:0],
-    //     function 1 = bit 401    = byte 13 bit 1 -> sw[3] bit 9
-    //   group 1 selected [379:376] = low nibble of byte 16 -> sw[4][3:0]
-    //
-    // Getting these wrong is not silent: high_speed stays 0 and init hard-fails
-    // below on a card that does in fact support the switch.
-#if SIM_CARD
-    // Deliberately not issued against the model -- see SIM_CARD above. This is
-    // not "the model would just say no": CMD6 carries a data phase, so an
-    // unanswered one hangs the DAT line until the 1.34 s data timeout.
-#else
-    int high_speed = 0;
-    uint32_t sw[16];
-    r = sdh_switch_func(0, sw); // check
-    if (r == 0 && ((sw[3] >> 9) & 1u)) {
-        r = sdh_switch_func(1, sw); // set
-        if (r == 0 && (sw[4] & 0xFu) == 1u)
-            high_speed = 1;
-    }
-    if (!high_speed) {
-        // CMD6 carries a data phase, so a card that does not answer leaves the
-        // DAT line parked in a read until the SDHCI data timeout (>1 s). Reset
-        // the CMD/DAT state machines so the controller is handed back clean
-        // rather than making the caller wait that out or retry into a hang.
-        *reg8(SDH_BASE, SDHC_SOFTWARE_RESET) = SDHC_RESET_CMD | SDHC_RESET_DAT;
-        (void)sdh_spin_until_clear8(SDHC_SOFTWARE_RESET,
-                                    SDHC_RESET_CMD | SDHC_RESET_DAT);
-        printf("FAIL: CMD6 high-speed switch (r=%x)\n", r);
-        return 0;
-    }
-#endif
+    // CMD6 SWITCH_FUNC (High Speed, 50MHz) negotiation deliberately dropped
+    // here: this design's SD clock generator has a fixed ClkPreDiv=2 against
+    // a 50MHz system clock (see the divider comment below), so the true
+    // 50MHz High Speed rate is unreachable regardless of what the card
+    // negotiates -- 25MHz is the hard local ceiling either way, and that
+    // already failed with a CMD-line timeout on this board (see below). So
+    // High Speed would buy nothing here without also revisiting the system
+    // clock, which is a bigger, separate decision. sdh_switch_func() (CMD6
+    // check/set, above) is kept for that future work but unused for now.
 
     // Card is configured -- switch from identification speed to full
     // data-transport speed. SD_CLOCK_EN must go back to 0 while the divider
     // is reprogrammed, same rule as the initial clock setup above.
     // freq_sel=1 -> divisor=ClkPreDiv(2)*2=4 -> 50MHz/4=12.5MHz: the fastest
-    // rate confirmed working end-to-end (incl. ACMD6, below) against real
+    // rate confirmed working end-to-end (incl. ACMD6, above) against real
     // Genesys2 hardware in sdcard_test.c. The controller's CAPABILITIES
     // register reports HIGH_SPEED_SUPP=0 (no 50MHz mode implemented) and
     // freq_sel=0 (25MHz, the Default Speed spec ceiling) failed with a
@@ -337,15 +297,14 @@ static inline uint32_t sdh_init(void) {
     // practical ceiling here, not just a conservative guess.
     *reg16(SDH_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE;                     // SD_CLOCK_EN=0
     *reg16(SDH_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE | SDHC_SDCLK_DIV(1); // 12.5MHz
-    if (sdh_spin_until_set16(SDHC_CLOCK_CTL, SDHC_INTCLK_STABLE)) {
-        printf("FAIL: sdh sdclk speedup\n"); return 0;
-    }
+    if (sdh_spin_until_set16(SDHC_CLOCK_CTL, SDHC_INTCLK_STABLE))
+        return sdh_fail(16, 0);
     *reg16(SDH_BASE, SDHC_CLOCK_CTL) |= SDHC_SDCLK_ENABLE;
 
     // CMD16: SET_BLOCKLEN = 512
     r = sdh_cmd(16, 512,
         SDHC_CRC_CHECK_ENABLE | SDHC_INDEX_CHECK_ENABLE | SDHC_RESP_LEN_48);
-    if (r) { printf("FAIL: CMD16=%x\n", r); return 0; }
+    if (r) return sdh_fail(17, r);
 
     return rca;
 }

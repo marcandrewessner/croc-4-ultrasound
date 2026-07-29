@@ -20,11 +20,20 @@ RISCV_AR      ?= $(RISCV_PREFIX)ar
 RISCV_LD      ?= $(RISCV_PREFIX)ld
 RISCV_STRIP   ?= $(RISCV_PREFIX)strip
 
+# SIM_CARD: 0 = build for a real SD card on real hardware (default -- this is
+# what xilinx/run_sw.sh loads), 1 = build for rtl/test/sdcard/model/sdModel.v
+# under verilator/run_verilator.sh. See sw/lib/inc/sdhci_helpers.h for what
+# this actually changes -- without this override, the header's own default
+# (SIM_CARD=1) silently forces byte-addressing on every real-hardware build,
+# which sends every SD write after the first session to the wrong address.
+# Override on the command line: `make SIM_CARD=1 ...`.
+SIM_CARD ?= 0
+
 # Compiler and linker flags
 RISCV_FLAGS ?= -march=$(RISCV_MARCH) -mabi=$(RISCV_MABI) -mcmodel=medany \
 	-static -std=gnu99 -Os -nostdlib -fno-builtin -ffreestanding \
 	-ffunction-sections -fdata-sections
-RISCV_CCFLAGS ?= $(RISCV_FLAGS) -Iinclude -I$(INCDIR) -I$(CURDIR)
+RISCV_CCFLAGS ?= $(RISCV_FLAGS) -Iinclude -I$(INCDIR) -I$(CURDIR) -DSIM_CARD=$(SIM_CARD)
 RISCV_LDFLAGS ?= -static -nostartfiles -lm -lgcc $(RISCV_FLAGS) -Wl,--gc-sections
 
 

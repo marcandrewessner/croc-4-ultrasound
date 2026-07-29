@@ -48,7 +48,7 @@
 //                       target_frame_full/SDCARD_OVERFLOW if the card
 //                       can't keep up with T_fill
 // ---------------------------------------------------------------------------
-#define NUM_FRAMES  4
+#define NUM_FRAMES  100
 
 #define TIMEOUT  250000U   // CLINT ticks (~7.5 s at 32 kHz) -- bounds the whole capture
 
