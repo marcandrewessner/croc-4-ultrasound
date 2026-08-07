@@ -302,7 +302,7 @@ sdmmc_decode_csd(struct sdmmc_softc *sc, sdmmc_response resp,
 			DPRINTF(("  csd->read_bl_len = %x\n", csd->read_bl_len));
 			break;
 		default:
-			DPRINTF(("%s: unknown SD CSD structure version 0x%x\n",
+			DPRINTF(("%s: unknown SD CSD structure version %x\n",
 			    DEVNAME(sc), csd->csdver));
 			return 1;
 			break;
@@ -317,7 +317,7 @@ sdmmc_decode_csd(struct sdmmc_softc *sc, sdmmc_response resp,
 			csd->capacity = MMC_CSD_CAPACITY(resp);
 			csd->read_bl_len = MMC_CSD_READ_BL_LEN(resp);
 		} else {
-			DPRINTF(("%s: unknown MMC CSD structure version 0x%x\n",
+			DPRINTF(("%s: unknown MMC CSD structure version %x\n",
 			    DEVNAME(sc), csd->csdver));
 			return 1;
 		}
@@ -768,7 +768,7 @@ sdmmc_mem_mmc_init(struct sdmmc_softc *sc, struct sdmmc_function *sf)
 		} else if (card_type & EXT_CSD_CARD_TYPE_F_26M) {
 			speed = 26000;
 		} else {
-			DPRINTF(("%s: unknown CARD_TYPE 0x%x\n", DEVNAME(sc),
+			DPRINTF(("%s: unknown CARD_TYPE %x\n", DEVNAME(sc),
 			    ext_csd[EXT_CSD_CARD_TYPE]));
 		}
 

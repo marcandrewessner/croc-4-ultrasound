@@ -29,11 +29,17 @@ RISCV_STRIP   ?= $(RISCV_PREFIX)strip
 # Override on the command line: `make SIM_CARD=1 ...`.
 SIM_CARD ?= 0
 
+# N_BLOCKS: number of 512B blocks sdcard_test25's CMD25/CMD18 session
+# writes+verifies. See sdcard_test25.c. Override on the command line:
+# `make N_BLOCKS=8 ...`. Harmless no-op for every other program, which
+# doesn't reference the macro.
+N_BLOCKS ?= 2
+
 # Compiler and linker flags
 RISCV_FLAGS ?= -march=$(RISCV_MARCH) -mabi=$(RISCV_MABI) -mcmodel=medany \
 	-static -std=gnu99 -Os -nostdlib -fno-builtin -ffreestanding \
 	-ffunction-sections -fdata-sections
-RISCV_CCFLAGS ?= $(RISCV_FLAGS) -Iinclude -I$(INCDIR) -I$(CURDIR) -DSIM_CARD=$(SIM_CARD)
+RISCV_CCFLAGS ?= $(RISCV_FLAGS) -Iinclude -I$(INCDIR) -I$(CURDIR) -DSIM_CARD=$(SIM_CARD) -DN_BLOCKS=$(N_BLOCKS)
 RISCV_LDFLAGS ?= -static -nostartfiles -lm -lgcc $(RISCV_FLAGS) -Wl,--gc-sections
 
 

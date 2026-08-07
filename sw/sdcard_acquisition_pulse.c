@@ -142,6 +142,17 @@ int main(void) {
         }
         status = ADC_ACQ->STATUS;
 
+        // Diagnostic for the timeout path: F0_FULL/F1_FULL tell us whether
+        // the ADC ever finished capturing at all. sdcard_start (adc_
+        // acquisition_top.sv) only fires once *both* are set in pulse mode
+        // -- if they're still 0/0 here, the copy engine (adc_acquisition_
+        // sdcard_controller.sv) was never even dispatched, and the problem
+        // is upstream on the ADC-capture side, not the SD write path.
+        if (timed_out)
+            printf("STATUS=%x F0_FULL=%x F1_FULL=%x\n", status,
+                   (status & ADC_ACQ_STATUS_F0_FULL) != 0,
+                   (status & ADC_ACQ_STATUS_F1_FULL) != 0);
+
         // 4. Hardware already reverted MODE to IDLE on the terminal event;
         //    this is only for the timeout path, where it did not.
         ADC_ACQ->CONF = ADC_ACQ_MODE_IDLE;

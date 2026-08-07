@@ -19,9 +19,14 @@
 #define USER_ROM_BASE_ADDR  0x20000000
 
 // Frequencies
-// 50MHz on both simulation (rtl/test/tb_croc_pkg.sv ClkPeriodSys) and the
-// genesys2 FPGA (xilinx/scripts/impl_ip.tcl clkwiz clk_soc) -- kept in sync
-// deliberately, so there's exactly one UART_FREQ for both targets.
+// Genesys2 FPGA clk_soc (xilinx/scripts/impl_ip.tcl clkwiz) is back to the
+// original 50MHz -- 100/80/70/65MHz were all tried (65MHz was the one that
+// actually closed timing cleanly) but reverted to isolate the
+// sdcard_acquisition_pulse SDCARD_OVERFLOW/timeout investigation from clk_soc
+// as a variable. This also puts UART_FREQ back in sync with
+// rtl/test/tb_croc_pkg.sv's ClkPeriodSys (still 20ns/50MHz, never changed),
+// so the sim/FPGA UART_FREQ mismatch from the 65MHz-era comment no longer
+// applies.
 #define TB_FREQUENCY        50000000
 #define TB_BAUDRATE         115200
 

@@ -4,6 +4,18 @@
 //
 // Authors:
 // - Marc-André Wessner
+//
+// Minimal, software-driven CMD25 (WRITE_MULTIPLE_BLOCK) + CMD18
+// (READ_MULTIPLE_BLOCK) round trip over 2 blocks, with AUTO_CMD12. Same
+// init sequence as sdcard_test.c (that file's CMD24/CMD17 single-block
+// round trip is unchanged and still the reference for "does the link work
+// at all"), diverging only at the data-transfer step -- this exists to
+// isolate whether a CMD25 multi-block session specifically has trouble at
+// the current SDCLK, independent of the hardware copy engine
+// (rtl/adc_acquisition/adc_acquisition_sdcard_controller.sv) that
+// sdcard_acquisition_pulse/_Nx rely on for their own CMD25 sessions -- see
+// project_croc_sdcard_clock_limit memory for the SDCARD_OVERFLOW history
+// that motivated this.
 
 #include "uart.h"
 #include "print.h"
@@ -13,6 +25,14 @@
 
 #define SDHCI_BASE    0x10010000
 #define TIMEOUT       10000U    // ~300 ms at 32 kHz — enough for any single op
+
+// Number of 512B blocks to write+verify in the CMD25/CMD18 session. Override
+// on the command line like SIM_CARD, e.g. `make N_BLOCKS=8 sdcard_test25...`.
+#ifndef N_BLOCKS
+#define N_BLOCKS      8
+#endif
+#define WORDS_PER_BLK 128        // 512 B / 4
+#define NWORDS        (N_BLOCKS * WORDS_PER_BLK)
 
 // ---------------------------------------------------------------------------
 // Polling helpers
@@ -39,13 +59,6 @@ static int spin_until_clear32(uint32_t base, int off, uint32_t mask) {
     return 0;
 }
 
-static int spin_until_set32(uint32_t base, int off, uint32_t mask) {
-    uint64_t end = clint_get_mtime() + TIMEOUT;
-    while (!(*reg32(base, off) & mask))
-        if (clint_get_mtime() >= end) return -1;
-    return 0;
-}
-
 // Print key registers: NINTR, EINTR, PRESENT_STATE (all %x, no %s)
 static void print_regs(void) {
     uint16_t n  = *reg16(SDHCI_BASE, SDHC_NINTR_STATUS);
@@ -54,33 +67,8 @@ static void print_regs(void) {
     printf("NINTR=%x EINTR=%x PS=%x\n", (uint32_t)n, (uint32_t)e, ps);
 }
 
-// Diagnostic: like spin_until_set16, but samples NINTR/PRESENT_STATE
-// periodically while waiting instead of returning one opaque pass/fail --
-// lets us tell whether the card is still toggling DAT during a stall (just
-// slow) or every sample is identical from t=0 (host or card frozen solid).
-static int spin_diag(uint16_t mask) {
-    uint64_t start = clint_get_mtime();
-    uint64_t end   = start + TIMEOUT;
-    uint32_t next  = 0;
-    while (!(*reg16(SDHCI_BASE, SDHC_NINTR_STATUS) & mask)) {
-        uint64_t now = clint_get_mtime();
-        if (now >= end) return -1;
-        if ((uint32_t)(now - start) >= next * (TIMEOUT / 8)) {
-            printf("t=%x NINTR=%x PS=%x\n", (uint32_t)(now - start),
-                   (uint32_t)*reg16(SDHCI_BASE, SDHC_NINTR_STATUS),
-                   *reg32(SDHCI_BASE, SDHC_PRESENT_STATE));
-            next++;
-        }
-    }
-    return 0;
-}
-
-// Every checkpoint used to carry its own unique message string (~20-30 bytes
-// of .rodata each, across ~40 call sites) -- that alone was enough to push
-// .text+.rodata past the 4KB SRAM budget and into the stack's territory (see
-// link.ld's SRAM/STACK split). A numeric step code plus one shared formatter
-// costs a few bytes total; grep this file for the step number to find the
-// checkpoint.
+// Numeric step code instead of a unique string per checkpoint -- same
+// reasoning as sdcard_test.c: grep this file for the step number.
 static int fail(int step, uint32_t detail) {
     printf("FAIL=%x:%x\n", step, detail);
     uart_write_flush();
@@ -115,6 +103,35 @@ static int sdhci_cmd(uint8_t idx, uint32_t arg, uint16_t flags) {
     return 0;
 }
 
+// Expected word value at flat index i (0..NWORDS-1): block 0 uses 0..127,
+// block 1 uses 0x1000.. so a swapped/overlapped block boundary is obvious
+// at a glance instead of just "some words wrong".
+static uint32_t expect_word(int i) {
+    int blk = i / WORDS_PER_BLK;
+    int off = i % WORDS_PER_BLK;
+    return (uint32_t)(blk * 0x1000 + off);
+}
+
+// AUTO_CMD12 never raises its own COMMAND_COMPLETE (autocmd_wrap.sv masks
+// it), so there is a ~1-cycle window where PRESENT_STATE reads idle before
+// AUTO_CMD12 has even started -- see
+// adc_acquisition_sdcard_controller.sv's CE_WAIT_CARD_READY_RSP comment,
+// which this mirrors: require two consecutive idle polls, not one.
+static int wait_card_ready(void) {
+    uint64_t end        = clint_get_mtime() + TIMEOUT;
+    int      ready_once = 0;
+    for (;;) {
+        uint32_t ps = *reg32(SDHCI_BASE, SDHC_PRESENT_STATE);
+        if ((ps & SDHC_CMD_INHIBIT_MASK) == 0 && (ps & SDHC_DAT0_LINE_LEVEL)) {
+            if (ready_once) return 0;
+            ready_once = 1;
+        } else {
+            ready_once = 0;
+        }
+        if (clint_get_mtime() >= end) return -1;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -137,17 +154,10 @@ int main() {
     if (spin_until_set16(SDHCI_BASE, SDHC_CLOCK_CTL, SDHC_INTCLK_STABLE))
         return fail(3, 0);
 
-    // Program the identification-speed divider with SD_CLOCK_EN still 0 --
-    // sd_clk_generator only latches a new divider while the SD clock is
-    // disabled -- then wait for it to load before starting the clock.
-    // sd_clk_generator's ClkPreDiv=2 folds into every divide, so the real
-    // divisor is 2*decode(freq_sel), not freq_sel itself: freq_sel=128
-    // (0x80) decodes to 256, so actual divisor = 512 -> clk_soc/512.
-    // clk_soc is back to the original 50MHz (xilinx/scripts/impl_ip.tcl
-    // clkwiz -- 100/80/70/65MHz were all tried, reverted to isolate the
-    // sdcard_acquisition_pulse investigation from clk_soc as a variable) ->
-    // ~97.7kHz, still comfortably under the SD spec's 400kHz
-    // identification-speed ceiling.
+    // Identification-speed divider -- see sdcard_test.c for the full
+    // ClkPreDiv/decode(freq_sel) derivation. freq_sel=128 -> divisor 512 ->
+    // clk_soc/512, comfortably under the SD spec's 400kHz ceiling whatever
+    // clk_soc currently is (check sw/config.h's TB_FREQUENCY, kept in sync).
     *reg16(SDHCI_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE | SDHC_SDCLK_DIV(128);
     if (spin_until_set16(SDHCI_BASE, SDHC_CLOCK_CTL, SDHC_INTCLK_STABLE))
         return fail(3, 1);
@@ -228,18 +238,8 @@ int main() {
     ok(5, rca);
 
     // -----------------------------------------------------------------------
-    // 8. ACMD6 -- SET_BUS_WIDTH, so the *card* actually drives DAT1-3, then
-    //    switch the host to match. Setting only the host's own HOST_CTL
-    //    4BIT_MODE bit (all this used to do) never told the card anything --
-    //    it stays in its post-reset default of 1-bit mode, so it only ever
-    //    drives DAT0. That fits everything seen on real hardware: CMD24
-    //    (write) "worked" because its only card-driven feedback is the DAT0
-    //    CRC-status token either way, but CMD17 (read) needs the card to
-    //    drive all 4 DAT lines -- which it never does while still in 1-bit
-    //    mode -- so the host's 4-bit start-of-data detection never fires and
-    //    DAT sits idle-high forever. Sent while still in 1-bit mode at
-    //    identification speed, which is where the card expects it -- matches
-    //    sdh_init() in sdhci_helpers.h, the vetted version of this sequence.
+    // 8. ACMD6 -- SET_BUS_WIDTH, sent at identification speed, before the
+    //    clock switch below -- see sdcard_test.c for the full rationale.
     // -----------------------------------------------------------------------
     r = sdhci_cmd(55, rca << 16,
                   SDHC_CRC_CHECK_ENABLE | SDHC_INDEX_CHECK_ENABLE | SDHC_RESP_LEN_48);
@@ -252,23 +252,11 @@ int main() {
 
     // -----------------------------------------------------------------------
     // Card is configured -- switch from identification speed to full
-    // data-transport speed. SD_CLOCK_EN must go back to 0 while the divider
-    // is reprogrammed, same rule as the initial clock setup above.
+    // data-transport speed. Same divider sdcard_test.c currently uses --
+    // kept identical deliberately, since this program's whole point is
+    // isolating CMD25 behavior at that same SDCLK, not testing a different
+    // one.
     // -----------------------------------------------------------------------
-    // The earlier near-instant Data Timeout Error on CMD17 at 6.25MHz turned
-    // out to be the missing ACMD6 (card stuck in 1-bit mode), not a signal-
-    // integrity/clock-speed problem -- see sdh_init()/this file's ACMD6 call
-    // above. freq_sel=0 (divisor=ClkPreDiv(2)*1=2) is 25MHz -- the SD spec's
-    // Default Speed ceiling -- at the original 50MHz clk_soc this is back to
-    // (xilinx/scripts/impl_ip.tcl clkwiz; 100/80/70/65MHz were all tried and
-    // reverted to isolate the sdcard_acquisition_pulse investigation from
-    // clk_soc as a variable). This exact setting used to fail with a
-    // CMD-line timeout on the very next command after this switch, every
-    // time it was tried at 50MHz clk_soc -- but that was before the card
-    // moved to Pmod JB with SLEW FAST/DRIVE 16 (genesys2.xdc) and before
-    // ACMD6 was moved to before this switch (above), so it's worth retrying
-    // clean rather than assuming it still fails. SDHC_SDCLK_DIV(1)
-    // (12.5MHz) is the confirmed-reliable fallback if it doesn't hold up.
     *reg16(SDHCI_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE;                    // SD_CLOCK_EN=0
     *reg16(SDHCI_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE | SDHC_SDCLK_DIV(0); // 25MHz
     if (spin_until_set16(SDHCI_BASE, SDHC_CLOCK_CTL, SDHC_INTCLK_STABLE))
@@ -278,8 +266,6 @@ int main() {
 
     // -----------------------------------------------------------------------
     // 9. CMD16 – SET_BLOCKLEN = 512
-    //    sdModel never initializes blockSize, Verilator sets it to 0.
-    //    Without CMD16, the card sends/receives 0 data bytes per transfer.
     // -----------------------------------------------------------------------
     r = sdhci_cmd(16, 512,
                   SDHC_CRC_CHECK_ENABLE | SDHC_INDEX_CHECK_ENABLE | SDHC_RESP_LEN_48);
@@ -288,17 +274,23 @@ int main() {
     print_regs();
 
     // -----------------------------------------------------------------------
-    // 10. Write 512 bytes (counter 0..127) to block 0  (CMD24 – WRITE_BLOCK)
+    // 10. Write N_BLOCKS blocks starting at block 0 (CMD25 –
+    //     WRITE_MULTIPLE_BLOCK, MULTI_BLOCK | BLOCK_COUNT_ENABLE |
+    //     AUTO_CMD12_ENABLE) -- mirrors adc_acquisition_sdcard_controller.sv's
+    //     CE_SET_BLOCK_SIZE..CE_SUBMIT_CMD25 sequence.
     // -----------------------------------------------------------------------
     if (spin_until_clear32(SDHCI_BASE, SDHC_PRESENT_STATE, SDHC_CMD_INHIBIT_MASK))
         return fail(15, 0);
 
     *reg16(SDHCI_BASE, SDHC_BLOCK_SIZE)    = 512;
-    *reg16(SDHCI_BASE, SDHC_BLOCK_COUNT)   = 1;
-    *reg32(SDHCI_BASE, SDHC_ARGUMENT)      = 0;    // block 0
-    *reg16(SDHCI_BASE, SDHC_TRANSFER_MODE) = 0;    // write, single block
+    *reg16(SDHCI_BASE, SDHC_BLOCK_COUNT)   = N_BLOCKS;
+    *reg32(SDHCI_BASE, SDHC_ARGUMENT)      = 0;    // starting block 0
+    *reg16(SDHCI_BASE, SDHC_TRANSFER_MODE) =
+        SDHC_MULTI_BLOCK_MODE   |
+        SDHC_BLOCK_COUNT_ENABLE |
+        SDHC_AUTO_CMD12_ENABLE;                    // write direction: bit4=0
     *reg16(SDHCI_BASE, SDHC_COMMAND) =
-        (24 << SDHC_COMMAND_INDEX_SHIFT) |
+        (25 << SDHC_COMMAND_INDEX_SHIFT) |
         SDHC_DATA_PRESENT_SELECT         |
         SDHC_CRC_CHECK_ENABLE            |
         SDHC_INDEX_CHECK_ENABLE          |
@@ -308,8 +300,11 @@ int main() {
         return fail(16, 0);
     *reg16(SDHCI_BASE, SDHC_NINTR_STATUS) = SDHC_COMMAND_COMPLETE;
     ok(9, 0);
-    printf("R1=%x\n", *reg32(SDHCI_BASE, SDHC_RESPONSE)); // CMD24's card status, see CMD17 comment below
+    printf("R1=%x\n", *reg32(SDHCI_BASE, SDHC_RESPONSE));
 
+    // Wait for BUFFER_WRITE_READY once, then stream all NWORDS through --
+    // not re-polled per block. SDHCI backpressures the writes transparently
+    // block-to-block as long as BLOCK_COUNT_ENABLE is set (dat_wrap.sv).
     if (spin_until_set16(SDHCI_BASE, SDHC_NINTR_STATUS, SDHC_BUFFER_WRITE_READY)) {
         print_regs();
         return fail(17, 0);
@@ -317,8 +312,8 @@ int main() {
     *reg16(SDHCI_BASE, SDHC_NINTR_STATUS) = SDHC_BUFFER_WRITE_READY;
     ok(10, 0);
 
-    for (int i = 0; i < 128; i++)
-        *reg32(SDHCI_BASE, SDHC_DATA) = (uint32_t)i;
+    for (int i = 0; i < NWORDS; i++)
+        *reg32(SDHCI_BASE, SDHC_DATA) = expect_word(i);
 
     if (spin_until_set16(SDHCI_BASE, SDHC_NINTR_STATUS, SDHC_TRANSFER_COMPLETE)) {
         print_regs();
@@ -328,38 +323,35 @@ int main() {
     *reg16(SDHCI_BASE, SDHC_NINTR_STATUS) = SDHC_TRANSFER_COMPLETE;
     ok(11, 0);
 
-    // TRANSFER_COMPLETE only means the host finished framing the block on
-    // the bus -- the card still runs its own program-to-flash cycle
-    // afterward and signals "busy" by holding DAT0 low throughout (SD spec
-    // busy signalling). CMD_INHIBIT_DAT (checked below via CMD_INHIBIT_MASK)
-    // is the *host's* bookkeeping bit and does not track this; issuing CMD17
-    // while DAT0 is still low gets it dropped by a card still in the PRG
-    // state. Poll the raw DAT0 line level directly instead.
-    if (spin_until_set32(SDHCI_BASE, SDHC_PRESENT_STATE, SDHC_DAT0_LINE_LEVEL)) {
+    // Two-consecutive-poll card-ready wait -- covers both the card's own
+    // programming busy (DAT0 low) and AUTO_CMD12's completion, which raises
+    // no COMMAND_COMPLETE of its own. See wait_card_ready()'s comment.
+    if (wait_card_ready()) {
         print_regs();
         return fail(18, 1);
     }
+    ok(11, 1);
 
     // -----------------------------------------------------------------------
-    // 11. Read block 0 back  (CMD17 – READ_SINGLE_BLOCK) and verify
+    // 11. Read N_BLOCKS blocks back (CMD18 – READ_MULTIPLE_BLOCK) and verify
     // -----------------------------------------------------------------------
     if (spin_until_clear32(SDHCI_BASE, SDHC_PRESENT_STATE, SDHC_CMD_INHIBIT_MASK))
         return fail(19, 0);
 
     *reg16(SDHCI_BASE, SDHC_BLOCK_SIZE)    = 512;
-    *reg16(SDHCI_BASE, SDHC_BLOCK_COUNT)   = 1;
+    *reg16(SDHCI_BASE, SDHC_BLOCK_COUNT)   = N_BLOCKS;
     *reg32(SDHCI_BASE, SDHC_ARGUMENT)      = 0;
-    *reg16(SDHCI_BASE, SDHC_TRANSFER_MODE) = SDHC_READ_MODE;
-    // Read back what actually landed -- transfer_mode's direction bit is
-    // silently dropped by the RTL while command_inhibit_cmd is set (see
-    // sdhci_reg_logic.sv), so confirm TM's bit4 (and BSZ/BCNT) really took
-    // instead of assuming the write succeeded.
+    *reg16(SDHCI_BASE, SDHC_TRANSFER_MODE) =
+        SDHC_MULTI_BLOCK_MODE   |
+        SDHC_BLOCK_COUNT_ENABLE |
+        SDHC_AUTO_CMD12_ENABLE  |
+        SDHC_READ_MODE;
     printf("BSZ=%x BCNT=%x TM=%x\n",
            (uint32_t)*reg16(SDHCI_BASE, SDHC_BLOCK_SIZE),
            (uint32_t)*reg16(SDHCI_BASE, SDHC_BLOCK_COUNT),
            (uint32_t)*reg16(SDHCI_BASE, SDHC_TRANSFER_MODE));
     *reg16(SDHCI_BASE, SDHC_COMMAND) =
-        (17 << SDHC_COMMAND_INDEX_SHIFT) |
+        (18 << SDHC_COMMAND_INDEX_SHIFT) |
         SDHC_DATA_PRESENT_SELECT         |
         SDHC_CRC_CHECK_ENABLE            |
         SDHC_INDEX_CHECK_ENABLE          |
@@ -367,7 +359,6 @@ int main() {
 
     if (spin_until_set16(SDHCI_BASE, SDHC_NINTR_STATUS, SDHC_COMMAND_COMPLETE))
         return fail(20, 0);
-    // Check for errors at command phase
     if (*reg16(SDHCI_BASE, SDHC_NINTR_STATUS) & SDHC_ERROR_INTERRUPT) {
         uint16_t e = *reg16(SDHCI_BASE, SDHC_EINTR_STATUS);
         printf("EINTR=%x\n", (uint32_t)e);
@@ -376,20 +367,13 @@ int main() {
     }
     *reg16(SDHCI_BASE, SDHC_NINTR_STATUS) = SDHC_COMMAND_COMPLETE;
     ok(12, 0);
-    // R1 card status for CMD17 -- never actually inspected before: the SDHC
-    // only reports whether a response FRAME arrived cleanly (CRC/index/
-    // timeout), not what the card's own status bits inside it say. Bits
-    // [12:9] are CURRENT_STATE (4=tran, 7=prg/busy); if the card still
-    // thinks it's programming here, it will silently ignore the data phase
-    // regardless of what DAT0's line level told the host beforehand.
     printf("R1=%x\n", *reg32(SDHCI_BASE, SDHC_RESPONSE));
     print_regs();
 
-    if (spin_diag(SDHC_BUFFER_READ_READY)) {
+    if (spin_until_set16(SDHCI_BASE, SDHC_NINTR_STATUS, SDHC_BUFFER_READ_READY)) {
         print_regs();
         return fail(21, 0);
     }
-    // Check for CRC/end-bit errors before reading
     if (*reg16(SDHCI_BASE, SDHC_NINTR_STATUS) & SDHC_ERROR_INTERRUPT) {
         uint16_t e = *reg16(SDHCI_BASE, SDHC_EINTR_STATUS);
         printf("EINTR=%x\n", (uint32_t)e);
@@ -400,18 +384,19 @@ int main() {
     ok(13, 0);
     print_regs();
 
-    // Read and verify — also print first 4 words and any mismatches
+    // Read and verify all NWORDS -- not re-polled per block, same
+    // reasoning as the write side.
     int errors = 0;
     int first_bad = -1;
     uint32_t first_bad_val = 0;
     uint32_t w0 = 0, w1 = 0, w2 = 0, w3 = 0;
-    for (int i = 0; i < 128; i++) {
+    for (int i = 0; i < NWORDS; i++) {
         uint32_t val = *reg32(SDHCI_BASE, SDHC_DATA);
         if (i == 0) w0 = val;
         if (i == 1) w1 = val;
-        if (i == 2) w2 = val;
-        if (i == 3) w3 = val;
-        if (val != (uint32_t)i) {
+        if (i == WORDS_PER_BLK)     w2 = val; // first word of block 1
+        if (i == WORDS_PER_BLK + 1) w3 = val;
+        if (val != expect_word(i)) {
             errors++;
             if (first_bad < 0) { first_bad = i; first_bad_val = val; }
         }
@@ -428,6 +413,11 @@ int main() {
     }
     print_regs();
     *reg16(SDHCI_BASE, SDHC_NINTR_STATUS) = SDHC_TRANSFER_COMPLETE;
+
+    if (wait_card_ready()) {
+        print_regs();
+        return fail(22, 1);
+    }
 
     if (errors) return fail(23, (uint32_t)errors);
 

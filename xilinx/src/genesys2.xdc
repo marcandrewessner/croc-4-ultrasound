@@ -28,18 +28,20 @@ set_input_delay -min -clock $soc_clk [expr { $SOC_TCK * 0.10 }] [ \
 set_input_delay -max -clock $soc_clk [expr { $SOC_TCK * 0.35 }] [ \
     get_ports {gpio_i* fan_sw* fetch_en_i}]
 
-set_output_delay -min -clock $soc_clk [expr { $SOC_TCK * 0.10 }] [get_ports fan_pwm]
-set_output_delay -max -clock $soc_clk [expr { $SOC_TCK * 0.35 }] [get_ports fan_pwm]
-
 set_max_delay [expr { 2 * $SOC_TCK }] -from [get_ports {gpio_i* fan_sw* fetch_en_i}]
 set_false_path -hold -from [get_ports {gpio_i* fan_sw* fetch_en_i}]
 
-set_max_delay [expr { 2 * $SOC_TCK }] -to [get_ports fan_pwm]
-set_false_path -hold -to [get_ports fan_pwm]
+# fan_pwm (duty-cycle output, human/thermal timescale) and gpio_o (LEDs) have
+# no real timing spec to meet -- their SOC_TCK-scaled output_delay budgets
+# were an artificial constraint that ate the timing margin needed elsewhere
+# (they dominated the entire worst-100 setup path list at 50MHz despite
+# neither port having any actual downstream timing requirement). Declared
+# false paths outright instead of budgeted, so they stop competing with
+# real logic for timing closure as SOC_TCK drops.
+set_false_path -to [get_ports fan_pwm]
 
 # LEDs
-set_output_delay -min -clock $soc_clk [expr { $SOC_TCK * 0.10 }] [get_ports gpio_o]
-set_output_delay -max -clock $soc_clk [expr { $SOC_TCK * 0.35 }] [get_ports gpio_o]
+set_false_path -to [get_ports gpio_o]
 
 
 ###############
@@ -83,14 +85,22 @@ set_property -dict { PACKAGE_PIN Y20   IOSTANDARD LVCMOS33 } [get_ports { uart_r
 set_property -dict { PACKAGE_PIN U27   IOSTANDARD LVCMOS33 } [get_ports { adc_clk_i }]; #IO_L13P_T2_MRCC_14 Sch=ja_p[1]
 set_property -dict { PACKAGE_PIN U28   IOSTANDARD LVCMOS33 } [get_ports { adc_data_msb_i }]; #IO_L13N_T2_MRCC_14 Sch=ja_n[1]
 
-## SD Card (Pmod JC, native 4-bit bus)
-set_property -dict { PACKAGE_PIN AC26  IOSTANDARD LVCMOS33 } [get_ports { sd_dat_io[3] }]; #IO_L19P_T3_13 Sch=jc[1] (~CS/DAT3)
-set_property -dict { PACKAGE_PIN AJ27  IOSTANDARD LVCMOS33 } [get_ports { sd_cmd_io    }]; #IO_L20P_T3_13 Sch=jc[2] (MOSI/CMD)
-set_property -dict { PACKAGE_PIN AH30  IOSTANDARD LVCMOS33 } [get_ports { sd_dat_io[0] }]; #IO_L18N_T2_13 Sch=jc[3] (MISO/DAT0)
-set_property -dict { PACKAGE_PIN AK29  IOSTANDARD LVCMOS33 } [get_ports { sd_clk_o     }]; #IO_L15P_T2_DQS_13 Sch=jc[4] (SCK/CLK)
-set_property -dict { PACKAGE_PIN AD26  IOSTANDARD LVCMOS33 } [get_ports { sd_dat_io[1] }]; #IO_L19N_T3_VREF_13 Sch=jc[7] (DAT1)
-set_property -dict { PACKAGE_PIN AG30  IOSTANDARD LVCMOS33 } [get_ports { sd_dat_io[2] }]; #IO_L18P_T2_13 Sch=jc[8] (DAT2)
-set_property -dict { PACKAGE_PIN AK30  IOSTANDARD LVCMOS33 } [get_ports { sd_cd_ni     }]; #IO_L15N_T2_DQS_13 Sch=jc[9] (CD)
+## SD Card (Pmod JB, native 4-bit bus)
+## SLEW FAST + DRIVE 16 on the driven/bidirectional lines: sharper edges to
+## claw back margin at higher SDCLK. DRIVE 24 (max for LVCMOS33) was tried
+## and made things worse -- sdcard_test, which passed cleanly at DRIVE 16,
+## stopped working entirely at 24. Read as overshoot/ringing on the
+## unterminated jumper wiring outweighing the faster edge rate, not a
+## marginal signal needing more current -- reverted to 16. See
+## project_croc_sdcard_clock_limit memory. sd_cd_ni is card-detect, an
+## input-only pin, so SLEW/DRIVE don't apply there.
+set_property -dict { PACKAGE_PIN V29   IOSTANDARD LVCMOS33  SLEW FAST  DRIVE 16 } [get_ports { sd_dat_io[3] }]; #Sch=jb[1] (~CS/DAT3)
+set_property -dict { PACKAGE_PIN V30   IOSTANDARD LVCMOS33  SLEW FAST  DRIVE 16 } [get_ports { sd_cmd_io    }]; #Sch=jb[2] (MOSI/CMD)
+set_property -dict { PACKAGE_PIN V25   IOSTANDARD LVCMOS33  SLEW FAST  DRIVE 16 } [get_ports { sd_dat_io[0] }]; #Sch=jb[3] (MISO/DAT0)
+set_property -dict { PACKAGE_PIN W26   IOSTANDARD LVCMOS33  SLEW FAST  DRIVE 16 } [get_ports { sd_clk_o     }]; #Sch=jb[4] (SCK/CLK)
+set_property -dict { PACKAGE_PIN T25   IOSTANDARD LVCMOS33  SLEW FAST  DRIVE 16 } [get_ports { sd_dat_io[1] }]; #Sch=jb[7] (DAT1)
+set_property -dict { PACKAGE_PIN U25   IOSTANDARD LVCMOS33  SLEW FAST  DRIVE 16 } [get_ports { sd_dat_io[2] }]; #Sch=jb[8] (DAT2)
+set_property -dict { PACKAGE_PIN U22   IOSTANDARD LVCMOS33 } [get_ports { sd_cd_ni     }]; #Sch=jb[9] (CD)
 
 ## Fan Control
 set_property -dict { PACKAGE_PIN W19   IOSTANDARD LVCMOS33 } [get_ports { fan_pwm }]; #IO_25_14 Sch=fan_pwm

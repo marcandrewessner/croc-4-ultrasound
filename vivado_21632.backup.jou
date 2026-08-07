@@ -1,0 +1,59 @@
+#-----------------------------------------------------------
+# Vivado v2022.1 (64-bit)
+# SW Build 3526262 on Mon Apr 18 15:47:01 MDT 2022
+# IP Build 3524634 on Mon Apr 18 20:55:01 MDT 2022
+# Start of session at: Tue Jul 28 18:44:29 2026
+# Process ID: 21632
+# Current directory: /scratch/mwessner/croc-4-ultrasound
+# Command line: vivado
+# Log file: /scratch/mwessner/croc-4-ultrasound/vivado.log
+# Journal file: /scratch/mwessner/croc-4-ultrasound/vivado.jou
+# Running On: badile40.ee.ethz.ch, OS: Linux, CPU Frequency: 600.000 MHz, CPU Physical cores: 24, Host memory: 66892 MB
+#-----------------------------------------------------------
+start_gui
+open_project /scratch/mwessner/croc-4-ultrasound/xilinx/build/genesys2.croc/croc.xpr
+update_compile_order -fileset sources_1
+open_hw_manager
+connect_hw_server -url localhost:3121 -allow_non_jtag
+current_hw_target [get_hw_targets */xilinx_tcf/Digilent/200300A8C5BBB]
+set_property PARAM.FREQUENCY 5000000 [get_hw_targets */xilinx_tcf/Digilent/200300A8C5BBB]
+open_hw_target
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+current_hw_device [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+display_hw_ila_data [ get_hw_ila_data hw_ila_data_1 -of_objects [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]]
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+program_hw_devices [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+program_hw_devices [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+add_wave -into {hw_ila_data_1.wcfg} -radix hex { {dbg_sd_clk_o} {dbg_sd_cmd_en_o} {dbg_sd_cmd_i} {dbg_sd_dat_en_o} {dbg_sd_dat_i} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_autocmd_wrap/i_cmd_logic/cmd_state_d} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_autocmd_wrap/i_cmd_logic/cmd_state_q} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/buffer_empty} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/buffer_read_ready} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/buffer_read_valid} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/buffer_write_ready} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/buffer_write_valid} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/busy_state_d} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/busy_state_q} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/busy_waiting} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/cmd_data_present_i} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/cmd_started_i} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/cmd_transfer_direction_i} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/dat_i} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/dat_state_d} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/dat_state_q} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/accepts_data_port_chunk} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/current_word_counter_d} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/current_word_counter_q} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/enable_reg} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/read_operation_i} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/reg_empty} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/reg_full} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/reg_length} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/reg_pop} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/reg_push} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/single_block_done_d} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/single_block_done_q} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/i_dat_buffer/write_operation_i} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/pause_sd_clk_read} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/pause_sd_clk_write} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/read_state_d} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/read_state_q} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/read_waiting} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/run_timeout_clock} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/sd_cmd_done_i} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/sd_rsp_done_i} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/timeout_elapsed} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/write_state_d} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/write_state_q} {i_croc_soc/i_croc/i_sdhci_top_obi/i_sdhci_impl/i_dat_wrap/write_waiting} }
+set_property TRIGGER_COMPARE_VALUE eq8'hXX [get_hw_probes i_croc_soc/i_croc/i_adc_acquisition_top/dbg_mode -of_objects [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]]
+set_property TRIGGER_COMPARE_VALUE eq4'bXXXX [get_hw_probes dbg_sd_dat_i -of_objects [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]]
+set_property TRIGGER_COMPARE_VALUE neq4'bXXXX [get_hw_probes dbg_sd_dat_i -of_objects [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]]
+set_property TRIGGER_COMPARE_VALUE neq4'hX [get_hw_probes dbg_sd_dat_i -of_objects [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]]
+set_property TRIGGER_COMPARE_VALUE neq4'h0 [get_hw_probes dbg_sd_dat_i -of_objects [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]]
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+program_hw_devices [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+display_hw_ila_data [ get_hw_ila_data hw_ila_data_1 -of_objects [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]]
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+program_hw_devices [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+run_hw_ila [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}] -trigger_now
+wait_on_hw_ila [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]
+display_hw_ila_data [upload_hw_ila_data [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]]
+run_hw_ila [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]
+wait_on_hw_ila [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]
+display_hw_ila_data [upload_hw_ila_data [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]]

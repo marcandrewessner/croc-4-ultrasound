@@ -41,9 +41,11 @@
 // (This header used to also gate a CMD6 SWITCH_FUNC High Speed negotiation
 // here, mirroring how sdModel.v has no SWITCH_FUNC handler at all and would
 // hang on it -- see sdh_switch_func() below. That negotiation isn't called
-// from sdh_init() right now: this design's SD clock generator can't reach
-// 50MHz against the current 50MHz system clock regardless -- see sdh_init()
-// -- so it would buy nothing yet. Kept defined for when that's revisited.)
+// from sdh_init() right now: this design's SD clock generator has a fixed
+// ClkPreDiv=2, capping SDCLK at half of clk_soc regardless of freq_sel --
+// still short of the 50MHz High Speed rate even at the current (original)
+// 50MHz clk_soc (25MHz ceiling) -- see sdh_init() -- so it would buy nothing
+// yet. Kept defined for when that's revisited.)
 #ifndef SIM_CARD
 #define SIM_CARD 0
 #endif
@@ -186,7 +188,9 @@ static inline uint32_t sdh_init(void) {
     // supplied to the card after power is stable and before CMD0, and allows
     // up to 1 ms for the supply ramp; the model needs neither, a real card
     // needs both. 64 CLINT ticks is ~2 ms at 32 kHz, which covers the ramp and
-    // is ~390 identification-speed clocks. Cheap once, at init.
+    // is ~390 identification-speed clocks at clk_soc=50MHz (back to the
+    // original value after 70/65MHz detours -- far more than the 74
+    // required either way). Cheap once, at init.
     *reg8(SDH_BASE, SDHC_POWER_CTL)   =
         (SDHC_VOLTAGE_3_3V << SDHC_VOLTAGE_SHIFT) | SDHC_BUS_POWER;
     *reg16(SDH_BASE, SDHC_CLOCK_CTL) |= SDHC_SDCLK_ENABLE;
@@ -276,27 +280,29 @@ static inline uint32_t sdh_init(void) {
     *reg8(SDH_BASE, SDHC_HOST_CTL) = SDHC_4BIT_MODE;
 
     // CMD6 SWITCH_FUNC (High Speed, 50MHz) negotiation deliberately dropped
-    // here: this design's SD clock generator has a fixed ClkPreDiv=2 against
-    // a 50MHz system clock (see the divider comment below), so the true
-    // 50MHz High Speed rate is unreachable regardless of what the card
-    // negotiates -- 25MHz is the hard local ceiling either way, and that
-    // already failed with a CMD-line timeout on this board (see below). So
-    // High Speed would buy nothing here without also revisiting the system
-    // clock, which is a bigger, separate decision. sdh_switch_func() (CMD6
-    // check/set, above) is kept for that future work but unused for now.
+    // here: this design's SD clock generator has a fixed ClkPreDiv=2, which
+    // caps SDCLK at half of clk_soc regardless of freq_sel -- 25MHz at the
+    // current (original) 50MHz clk_soc, still short of the 50MHz High Speed
+    // rate. So High Speed would still buy nothing here without also
+    // changing ClkPreDiv itself, a bigger, separate decision.
+    // sdh_switch_func() (CMD6 check/set, above) is kept for that future
+    // work but unused for now.
 
     // Card is configured -- switch from identification speed to full
     // data-transport speed. SD_CLOCK_EN must go back to 0 while the divider
     // is reprogrammed, same rule as the initial clock setup above.
-    // freq_sel=1 -> divisor=ClkPreDiv(2)*2=4 -> 50MHz/4=12.5MHz: the fastest
-    // rate confirmed working end-to-end (incl. ACMD6, above) against real
-    // Genesys2 hardware in sdcard_test.c. The controller's CAPABILITIES
-    // register reports HIGH_SPEED_SUPP=0 (no 50MHz mode implemented) and
-    // freq_sel=0 (25MHz, the Default Speed spec ceiling) failed with a
-    // CMD-line timeout on this board's wiring, so 12.5MHz is the real
-    // practical ceiling here, not just a conservative guess.
-    *reg16(SDH_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE;                     // SD_CLOCK_EN=0
-    *reg16(SDH_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE | SDHC_SDCLK_DIV(1); // 12.5MHz
+    // freq_sel=0 -> divisor=ClkPreDiv(2)*1=2 -> clk_soc/2 = 25MHz at the
+    // current 50MHz clk_soc -- the SD spec's Default Speed ceiling, and
+    // spec-legal here unlike the 32.5MHz/35MHz settings tried at higher
+    // clk_soc. This exact setting used to fail with a CMD-line timeout at
+    // 50MHz clk_soc, but that was before the card moved to Pmod JB with
+    // SLEW FAST/DRIVE 16 (genesys2.xdc) and before ACMD6 was moved to
+    // before this switch (above) -- worth retrying clean. freq_sel=1
+    // (12.5MHz, clk_soc/4) is the confirmed-reliable fallback if it doesn't
+    // hold up, across both the software single-block path (sdcard_test.c)
+    // and the hardware CMD25 multi-block copy engine.
+    *reg16(SDH_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE;                    // SD_CLOCK_EN=0
+    *reg16(SDH_BASE, SDHC_CLOCK_CTL) = SDHC_INTCLK_ENABLE | SDHC_SDCLK_DIV(0); // 25MHz
     if (sdh_spin_until_set16(SDHC_CLOCK_CTL, SDHC_INTCLK_STABLE))
         return sdh_fail(16, 0);
     *reg16(SDH_BASE, SDHC_CLOCK_CTL) |= SDHC_SDCLK_ENABLE;

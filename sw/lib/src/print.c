@@ -37,6 +37,11 @@ void printf(const char *fmt, ...) {
             fmt++;
             if (*fmt == 'x') { // hex
                 idx = format_hex32(buffer, va_arg(args, unsigned int));
+                // 0x prefix so hex output isn't mistakable for decimal --
+                // every %x call site across sw/ prints only the raw digits
+                // otherwise, and a bare "42" reads as decimal at a glance.
+                putchar('0');
+                putchar('x');
                 // print from buffer
                 for (int j = idx - 1; j >= 0; j--) {
                     putchar(buffer[j]);
