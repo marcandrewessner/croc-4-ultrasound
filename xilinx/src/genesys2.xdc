@@ -19,6 +19,29 @@ create_clock -period $SYS_TCK -name sys_clk [get_ports sys_clk_p]
 set SOC_TCK 20.0
 set soc_clk [get_clocks -of_objects [get_pins i_clkwiz/clk_soc]]
 
+#############
+# ADC Clock #
+#############
+
+# adc_clk_i is a free-running clock supplied by the external ADC board over
+# Pmod JA. It had no create_clock at all, so check_timing flagged 265
+# register/latch pins (the 2-sample packer in adc_acquisition_top.sv plus
+# the entire source side of the ADC->SoC cdc_fifo_gray -- data regs, gray
+# write pointer, and the sync-chain input flops) as having no clock, meaning
+# none of that logic was ever timed, placed, or routed for speed. Measured
+# real-hardware ceiling before this constraint was ~28 MHz, which is a
+# placement accident, not an architectural limit. Target 100 MHz here.
+#
+# adc_clk is genuinely asynchronous to soc_clk (crossed only via
+# cdc_fifo_gray, whose synchronizer flops already carry the async_reg
+# attribute via common_cells/sync.sv, so Vivado treats that first-stage
+# capture as intentionally metastable-tolerant rather than a timing
+# violation) -- declare it its own async clock group instead of trying to
+# relate the two domains.
+set ADC_TCK 10.0
+create_clock -period $ADC_TCK -name adc_clk [get_ports adc_clk_i]
+set_clock_groups -asynchronous -group [get_clocks adc_clk] -group $soc_clk
+
 ############
 # Switches #
 ############

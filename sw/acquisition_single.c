@@ -138,11 +138,13 @@ int main(void) {
     run_acquisition();
     printf("F0 full\n");
     dump_frame();
+    check_frame();
 
     // --- run 2: same peripheral, re-armed -------------------------------
     run_acquisition();
     printf("F0 full (re-armed)\n");
     dump_frame();
+    check_frame();
 
     // The ISR clears ADC_OVERFLOW along with everything else, so the only
     // place it is still visible is the STATUS snapshot it took.

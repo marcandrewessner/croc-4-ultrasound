@@ -1,0 +1,81 @@
+#-----------------------------------------------------------
+# Vivado v2022.1 (64-bit)
+# SW Build 3526262 on Mon Apr 18 15:47:01 MDT 2022
+# IP Build 3524634 on Mon Apr 18 20:55:01 MDT 2022
+# Start of session at: Thu Aug  6 12:16:51 2026
+# Process ID: 3397854
+# Current directory: /scratch/mwessner/croc-4-ultrasound
+# Command line: vivado
+# Log file: /scratch/mwessner/croc-4-ultrasound/vivado.log
+# Journal file: /scratch/mwessner/croc-4-ultrasound/vivado.jou
+# Running On: badile40.ee.ethz.ch, OS: Linux, CPU Frequency: 600.000 MHz, CPU Physical cores: 24, Host memory: 66892 MB
+#-----------------------------------------------------------
+start_gui
+open_project /scratch/mwessner/croc-4-ultrasound/xilinx/build/genesys2.croc/croc.xpr
+update_compile_order -fileset sources_1
+open_hw_manager
+connect_hw_server -url localhost:3121 -allow_non_jtag
+current_hw_target [get_hw_targets */xilinx_tcf/Digilent/200300A8C5BBB]
+set_property PARAM.FREQUENCY 5000000 [get_hw_targets */xilinx_tcf/Digilent/200300A8C5BBB]
+open_hw_target
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+current_hw_device [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+program_hw_devices [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+display_hw_ila_data [ get_hw_ila_data hw_ila_data_1 -of_objects [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]]
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+program_hw_devices [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+program_hw_devices [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+program_hw_devices [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+refresh_hw_target {localhost:3121/xilinx_tcf/Digilent/200300A8C5BBB}
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+program_hw_devices [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+program_hw_devices [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+program_hw_devices [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+program_hw_devices [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+run_hw_ila [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]
+wait_on_hw_ila [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]
+display_hw_ila_data [upload_hw_ila_data [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]]
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+program_hw_devices [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0]
+set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0]
+program_hw_devices [get_hw_devices xc7k325t_0]
+refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0]
+display_hw_ila_data [ get_hw_ila_data hw_ila_data_1 -of_objects [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]]

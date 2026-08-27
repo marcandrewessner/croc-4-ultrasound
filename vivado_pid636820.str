@@ -1,0 +1,469 @@
+/*
+
+Xilinx Vivado v2022.1 (64-bit) [Major: 2022, Minor: 1]
+SW Build: 3526262 on Mon Apr 18 15:47:01 MDT 2022
+IP Build: 3524634 on Mon Apr 18 20:55:01 MDT 2022
+
+Process ID (PID): 636820
+License: Customer
+Mode: GUI Mode
+
+Current time: 	Thu Aug 20 14:54:32 CEST 2026
+Time zone: 	Central European Standard Time (Europe/Vienna)
+
+OS: Ubuntu
+OS Version: 4.18.0-553.40.1.el8_10.x86_64
+OS Architecture: amd64
+Available processors (cores): 24
+
+Display: 1
+Screen size: 2560x1440
+Screen resolution (DPI): 100
+Available screens: 2
+Default font: family=Dialog,name=Dialog,style=plain,size=12
+Scale size: 12
+
+Java version: 	11.0.11 64-bit
+Java home: 	/usr/pack/vitis-2022.1-zr/Vivado/2022.1/tps/lnx64/jre11.0.11_9
+Java executable: 	/usr/pack/vitis-2022.1-zr/Vivado/2022.1/tps/lnx64/jre11.0.11_9/bin/java
+Java arguments: 	[-Dsun.java2d.pmoffscreen=false, -Dhttps.protocols=TLSv1,TLSv1.1,TLSv1.2, -Dsun.java2d.xrender=false, -Djdk.gtk.version=2, -Dsun.java2d.uiScale.enabled=false, -Xverify:none, -Dswing.aatext=true, -XX:-UsePerfData, -Djdk.map.althashing.threshold=512, -XX:StringTableSize=4072, --add-opens=java.desktop/com.sun.awt=ALL-UNNAMED, --add-opens=java.desktop/javax.swing.plaf.synth=ALL-UNNAMED, --add-opens=java.base/java.nio=ALL-UNNAMED, --add-opens=java.desktop/sun.swing=ALL-UNNAMED, --add-opens=java.desktop/javax.swing=ALL-UNNAMED, --add-opens=java.desktop/javax.swing.tree=ALL-UNNAMED, --add-opens=java.desktop/javax.swing.plaf.basic=ALL-UNNAMED, --add-opens=java.desktop/javax.swing.plaf.synth=ALL-UNNAMED, --add-opens=java.desktop/javax.swing.plaf.basic=ALL-UNNAMED, --add-opens=java.desktop/javax.swing=ALL-UNNAMED, --add-opens=java.desktop/javax.swing.tree=ALL-UNNAMED, --add-opens=java.desktop/java.awt.event=ALL-UNNAMED, --add-exports=java.desktop/javax.swing.plaf.synth=ALL-UNNAMED, --add-exports=java.base/java.nio=ALL-UNNAMED, --add-exports=java.desktop/sun.swing=ALL-UNNAMED, --add-exports=java.desktop/javax.swing=ALL-UNNAMED, --add-exports=java.desktop/javax.swing.tree=ALL-UNNAMED, --add-exports=java.desktop/javax.swing.plaf.basic=ALL-UNNAMED, --add-exports=java.desktop/sun.swing=ALL-UNNAMED, --add-exports=java.desktop/sun.swing.table=ALL-UNNAMED, --add-exports=java.desktop/sun.swing.plaf.synth=ALL-UNNAMED, --add-exports=java.desktop/sun.awt.shell=ALL-UNNAMED, --add-exports=java.base/sun.security.action=ALL-UNNAMED, --add-exports=java.desktop/sun.font=ALL-UNNAMED, --add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED, -XX:NewSize=60m, -XX:MaxNewSize=60m, -Xms256m, -Xmx3072m, -Xss5m, -Xrs]
+Java initial memory (-Xms): 	256 MB
+Java maximum memory (-Xmx):	 3 GB
+
+
+User name: 	sem26f48
+User home directory: /home/sem26f48
+User working directory: /scratch/mwessner/croc-4-ultrasound
+User country: 	US
+User language: 	en
+User locale: 	en_US
+
+RDI_BASEROOT: /usr/pack/vitis-2022.1-zr/Vivado
+HDI_APPROOT: /usr/pack/vitis-2022.1-zr/Vivado/2022.1
+RDI_DATADIR: /usr/pack/vitis-2022.1-zr/Vivado/2022.1/data
+RDI_BINDIR: /usr/pack/vitis-2022.1-zr/Vivado/2022.1/bin
+
+Vivado preferences file: /home/sem26f48/.Xilinx/Vivado/2022.1/vivado.xml
+Vivado preferences directory: /home/sem26f48/.Xilinx/Vivado/2022.1/
+Vivado layouts directory: /home/sem26f48/.Xilinx/Vivado/2022.1/data/layouts
+PlanAhead jar file: 	/usr/pack/vitis-2022.1-zr/Vivado/2022.1/lib/classes/planAhead.jar
+Vivado log file: 	/scratch/mwessner/croc-4-ultrasound/vivado.log
+Vivado journal file: 	/scratch/mwessner/croc-4-ultrasound/vivado.jou
+Engine tmp dir: 	./.Xil/Vivado-636820-badile40.ee.ethz.ch
+
+Xilinx Environment Variables
+----------------------------
+XILINX: /usr/pack/vitis-2022.1-zr/Vivado/2022.1/ids_lite/ISE
+XILINX_DSP: /usr/pack/vitis-2022.1-zr/Vivado/2022.1/ids_lite/ISE
+XILINX_HLS: /usr/pack/vitis-2022.1-zr/Vitis_HLS/2022.1
+XILINX_PLANAHEAD: /usr/pack/vitis-2022.1-zr/Vivado/2022.1
+XILINX_SDK: /usr/pack/vitis-2022.1-zr/Vitis/2022.1
+XILINX_VITIS: /usr/pack/vitis-2022.1-zr/Vitis/2022.1
+XILINX_VIVADO: /usr/pack/vitis-2022.1-zr/Vivado/2022.1
+XILINX_VIVADO_HLS: /usr/pack/vitis-2022.1-zr/Vivado/2022.1
+XILINX_XRT: /usr/pack/vitis-2022.1-zr/xrt
+
+
+GUI allocated memory:	256 MB
+GUI max memory:		3,072 MB
+Engine allocated memory: 1,808 MB
+
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+
+*/
+
+// TclEventType: START_GUI
+// Tcl Message: start_gui 
+// HMemoryUtils.trashcanNow. Engine heap size: 1,808 MB. GUI used memory: 60 MB. Current time: 8/20/26, 2:54:33 PM CEST
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1001 ms.
+selectList(PAResourceQtoS.SyntheticaGettingStartedView_RECENT_PROJECTS, "/scratch/mwessner/croc-4-ultrasound/xilinx/build/genesys2.croc/croc.xpr", 0); // r
+// [GUI Memory]: 67 MB (+67971kb) [00:14:53]
+// [Engine Memory]: 1,816 MB (+1752611kb) [00:14:53]
+// Opening Vivado Project: /scratch/mwessner/croc-4-ultrasound/xilinx/build/genesys2.croc/croc.xpr. Version: Vivado v2022.1 
+// TclEventType: DEBUG_PROBE_SET_CHANGE
+// TclEventType: FLOW_ADDED
+// TclEventType: MSGMGR_MOVEMSG
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: FILESET_TARGET_UCF_CHANGE
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: FILE_SET_NEW
+// TclEventType: RUN_COMPLETED
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: FILESET_TARGET_UCF_CHANGE
+// TclEventType: RUN_COMPLETED
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: FILESET_TARGET_UCF_CHANGE
+// TclEventType: RUN_CURRENT
+// TclEventType: PROJECT_DASHBOARD_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: PROJECT_NEW
+// Tcl Message: open_project /scratch/mwessner/croc-4-ultrasound/xilinx/build/genesys2.croc/croc.xpr 
+// Tcl Message: INFO: [filemgmt 56-3] Default IP Output Path : Could not find the directory '/scratch/mwessner/croc-4-ultrasound/xilinx/build/genesys2.croc/croc.gen/sources_1'. 
+// Tcl Message: Scanning sources... Finished scanning sources 
+// Tcl Message: INFO: [IP_Flow 19-234] Refreshing IP repositories INFO: [IP_Flow 19-1704] No user IP repositories specified INFO: [IP_Flow 19-2313] Loaded Vivado IP repository '/usr/pack/vitis-2022.1-zr/Vivado/2022.1/data/ip'. 
+// TclEventType: PROJECT_NEW
+// [GUI Memory]: 102 MB (+32835kb) [00:14:56]
+// [Engine Memory]: 1,911 MB (+4724kb) [00:14:56]
+// WARNING: HEventQueue.dispatchEvent() is taking  2224 ms.
+// [GUI Memory]: 107 MB (+470kb) [00:14:57]
+// Project name: croc; location: /scratch/mwessner/croc-4-ultrasound/xilinx/build/genesys2.croc; part: xc7k325tffg900-2
+dismissDialog("Open Project"); // bA
+// HMemoryUtils.trashcanNow. Engine heap size: 1,937 MB. GUI used memory: 71 MB. Current time: 8/20/26, 3:09:23 PM CEST
+// [GUI Memory]: 130 MB (+18373kb) [00:15:00]
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: DG_GRAPH_STALE
+// Tcl Message: update_compile_order -fileset sources_1 
+// [GUI Memory]: 141 MB (+3868kb) [00:15:03]
+// Elapsed time: 87 seconds
+selectTree(PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, "[, Program and Debug, Generate Bitstream]", 20, false); // n
+// Run Command: PAResourceCommand.PACommandNames_RUN_BITGEN
+// 'cW' command handler elapsed time: 4 seconds
+selectButton("OptionPane.button", "Cancel"); // JButton
+collapseTree(PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, "[, Program and Debug, Open Hardware Manager]", 21); // n
+expandTree(PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, "[, Program and Debug, Open Hardware Manager]", 21); // n
+selectTree(PAResourceEtoH.FlowNavigatorTreePanel_FLOW_NAVIGATOR_TREE, "[, Program and Debug, Open Hardware Manager, Open Target]", 22, false); // n
+// Run Command: PAResourceCommand.PACommandNames_OPEN_HW_TARGET
+selectMenu(PAResourceOtoP.ProgramDebugTab_OPEN_RECENTLY_OPENED_TARGET, "Recent Targets"); // ao
+selectMenuItem(PAResourceCommand.PACommandNames_AUTO_CONNECT_TARGET, "Auto Connect"); // ar
+// Run Command: PAResourceCommand.PACommandNames_OPEN_HARDWARE_MANAGER
+// Tcl Command: 'rdi::info_commands get_hw_probes'
+// Tcl Command: 'load_features labtools'
+// TclEventType: LOAD_FEATURE
+// TclEventType: HW_SESSION_OPEN
+// [Engine Memory]: 2,028 MB (+22102kb) [00:16:34]
+// HMemoryUtils.trashcanNow. Engine heap size: 2,033 MB. GUI used memory: 81 MB. Current time: 8/20/26, 3:10:58 PM CEST
+// Tcl Message: open_hw_manager 
+closeView(PAResourceOtoP.PAViews_PROJECT_SUMMARY, "Project Summary"); // v
+// Run Command: PAResourceCommand.PACommandNames_AUTO_CONNECT_TARGET
+dismissDialog("Open Hardware Manager"); // bA
+// Tcl Message: connect_hw_server -allow_non_jtag 
+// Tcl Message: INFO: [Labtools 27-2285] Connecting to hw_server url TCP:localhost:3121 INFO: [Labtools 27-2222] Launching hw_server... INFO: [Labtools 27-2221] Launch Output:  ****** Xilinx hw_server v2022.1   **** Build date : Apr 18 2022 at 16:10:30     ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.   
+// TclEventType: HW_SERVER_UPDATE
+// Tcl Message: INFO: [Labtools 27-3415] Connecting to cs_server url TCP:localhost:3042 INFO: [Labtools 27-3417] Launching cs_server... 
+// TclEventType: HW_SERVER_UPDATE
+// Tcl Message: INFO: [Labtools 27-2221] Launch Output:   ******** Xilinx cs_server v2022.1.0   ****** Build date   : Apr 12 2022-21:12:08     **** Build number : 2022.1.1649790728       ** Copyright 2017-2026 Xilinx, Inc. All Rights Reserved.    
+// TclEventType: HW_TARGET_CHANGE
+// TclEventType: HW_TARGET_CLOSE
+// TclEventType: HW_DEVICE_CHANGE
+// TclEventType: HW_SYSMON_ADD
+// TclEventType: HW_TARGET_UPDATE
+// WARNING: HEventQueue.dispatchEvent() is taking  1584 ms.
+// Tcl Message: open_hw_target 
+// Tcl Message: INFO: [Labtoolstcl 44-466] Opening hw_target localhost:3121/xilinx_tcf/Digilent/200300A8C5BBB 
+// TclEventType: HW_DEVICE_CHANGE
+// Tcl Message: set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/build/genesys2.croc/croc.runs/impl_1/croc_xilinx.bit} [get_hw_devices xc7k325t_0] 
+// TclEventType: HW_DEVICE_CHANGE
+// Tcl Message: set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/build/genesys2.croc/croc.runs/impl_1/croc_xilinx.ltx} [get_hw_devices xc7k325t_0] 
+// Tcl Message: set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/build/genesys2.croc/croc.runs/impl_1/croc_xilinx.ltx} [get_hw_devices xc7k325t_0] 
+// Tcl Message: current_hw_device [get_hw_devices xc7k325t_0] 
+// TclEventType: HW_DEVICE_CHANGE
+// TclEventType: HW_SYSMON_CHANGE
+// TclEventType: HW_DEVICE_UPDATE
+// TclEventType: HW_DEVICE_CHANGE
+// Tcl Message: refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0] 
+// Tcl Message: INFO: [Labtools 27-1435] Device xc7k325t (JTAG device index = 0) is not programmed (DONE status = 0). 
+dismissDialog("Auto Connect"); // bA
+// [Engine Memory]: 3,481 MB (+1416904kb) [00:16:40]
+selectTreeTable(PAResourceEtoH.HardwareTreePanel_HARDWARE_TREE_TABLE, "xc7k325t_0 (1) ; Not programmed", 2, "xc7k325t_0 (1)", 0, true); // t - Node
+selectTreeTable(PAResourceEtoH.HardwareTreePanel_HARDWARE_TREE_TABLE, "xc7k325t_0 (1) ; Not programmed", 2, "xc7k325t_0 (1)", 0, true, false, false, false, true, false); // t - Popup Trigger - Node
+selectMenuItem(RDIResourceCommand.RDICommands_PROPERTIES, "Hardware Device Properties..."); // ar
+// Run Command: RDIResourceCommand.RDICommands_PROPERTIES
+selectTreeTable(PAResourceEtoH.HardwareTreePanel_HARDWARE_TREE_TABLE, "xc7k325t_0 (1) ; Not programmed", 2, "xc7k325t_0 (1)", 0, true, false, false, false, true, false); // t - Popup Trigger - Node
+selectMenuItem(PAResourceCommand.PACommandNames_PROGRAM_FPGA, "Program Device..."); // ar
+// Run Command: PAResourceCommand.PACommandNames_PROGRAM_FPGA
+// Elapsed time: 23 seconds
+selectButton(PAResourceOtoP.ProgramFpgaDialog_SPECIFY_BITSTREAM_FILE, (String) null); // s
+// Elapsed time: 12 seconds
+setFileChooser("/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit");
+selectButton(PAResourceOtoP.ProgramFpgaDialog_PROGRAM, "Program"); // a
+dismissDialog("Program Device"); // bC
+// TclEventType: HW_DEVICE_CHANGE
+// Tcl Message: set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0] 
+// Tcl Message: set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0] 
+// TclEventType: HW_DEVICE_CHANGE
+// Tcl Message: set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0] 
+// Tcl Message: program_hw_devices [get_hw_devices xc7k325t_0] 
+// TclEventType: HW_TARGET_NEEDS_CLOSE
+// TclEventType: HW_DEVICE_CHANGE
+// Tcl Message: INFO: [Labtools 27-3164] End of startup status: HIGH 
+// Tcl Message: program_hw_devices: Time (s): cpu = 00:00:07 ; elapsed = 00:00:07 . Memory (MB): peak = 9194.938 ; gain = 3.000 ; free physical = 18433 ; free virtual = 98253 
+// TclEventType: HW_DEVICE_CHANGE
+// TclEventType: HW_SYSMON_CHANGE
+// TclEventType: HW_VIO_CHANGE
+// TclEventType: HW_ILA_CHANGE
+// TclEventType: HW_DEVICE_UPDATE
+// WARNING: HEventQueue.dispatchEvent() is taking  1548 ms.
+// TclEventType: HW_DEVICE_CHANGE
+// Tcl Message: refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0] 
+// Tcl Message: INFO: [Labtools 27-2302] Device xc7k325t (JTAG device index = 0) is programmed with a design that has 1 ILA core(s). INFO: [Labtools 27-2302] Device xc7k325t (JTAG device index = 0) is programmed with a design that has 1 VIO core(s). 
+// TclEventType: HW_DEVICE_CHANGE
+// TclEventType: HW_DEVICE_PROBES_CHANGE
+// TclEventType: DEBUG_PROBE_SET_CHANGE
+// TclEventType: DEBUG_PROBE_CHANGE
+// TclEventType: HW_DEVICE_PROBES_CHANGE
+// TclEventType: HW_VIO_CHANGE
+// TclEventType: HW_ILA_CHANGE
+// TclEventType: HW_VIO_PROBE_VALUE_CHANGE
+// TclEventType: HW_ILA_CHANGE
+// TclEventType: HW_VIO_PROBE_VALUE_CHANGE
+// TclEventType: HW_ILA_CHANGE
+// Tcl Message: INFO: [Labtools 27-1889] Uploading output probe values for VIO core [hw_vio_1] 
+// TclEventType: WAVEFORM_UPDATE_TITLE
+// TclEventType: WAVEFORM_OPEN_WCFG
+// TclEventType: WAVEFORM_DELAYED_MODEL_EVENT
+// TclEventType: WAVEFORM_MODEL_EVENT
+// TclEventType: WAVEFORM_UPDATE_WAVEFORM
+// TclEventType: WAVEFORM_UPDATE_COMMANDS
+// TclEventType: WAVEFORM_MODEL_EVENT
+// TclEventType: WAVEFORM_UPDATE_WAVEFORM
+// TclEventType: WAVEFORM_UPDATE_COMMANDS
+// TclEventType: WAVEFORM_UPDATE_TITLE
+// TclEventType: WAVEFORM_UPDATE_WAVEFORM
+// TclEventType: WAVEFORM_UPDATE_TITLE
+// HMemoryUtils.trashcanNow. Engine heap size: 3,602 MB. GUI used memory: 102 MB. Current time: 8/20/26, 3:11:58 PM CEST
+// TclEventType: WAVEFORM_UPDATE_WAVEFORM
+// TclEventType: WAVEFORM_UPDATE_TITLE
+// Tcl Message: display_hw_ila_data [ get_hw_ila_data hw_ila_data_1 -of_objects [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]] 
+// TclEventType: WAVEFORM_UPDATE_TITLE
+// 'I' command handler elapsed time: 46 seconds
+dismissDialog("Program Device"); // bA
+// TclEventType: HW_SERVER_UPDATE
+// HMemoryUtils.trashcanNow. Engine heap size: 3,604 MB. GUI used memory: 100 MB. Current time: 8/20/26, 3:11:58 PM CEST
+// TclEventType: HW_SERVER_UPDATE
+// HMemoryUtils.trashcanNow. Engine heap size: 3,604 MB. GUI used memory: 100 MB. Current time: 8/20/26, 3:11:59 PM CEST
+// TclEventType: WAVEFORM_MODEL_EVENT
+// TclEventType: WAVEFORM_UPDATE_WAVEFORM
+// TclEventType: WAVEFORM_MODEL_EVENT
+selectTreeTable(PAResourceEtoH.HardwareTreePanel_HARDWARE_TREE_TABLE, "xc7k325t_0 (3) ; Programmed", 2, "xc7k325t_0 (3)", 0, true); // t - Node
+selectTreeTable(PAResourceEtoH.HardwareTreePanel_HARDWARE_TREE_TABLE, "xc7k325t_0 (3) ; Programmed", 2, "xc7k325t_0 (3)", 0, true, false, false, false, true, false); // t - Popup Trigger - Node
+// [GUI Memory]: 159 MB (+11791kb) [00:21:08]
+// HMemoryUtils.trashcanNow. Engine heap size: 3,599 MB. GUI used memory: 99 MB. Current time: 8/20/26, 3:42:03 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,599 MB. GUI used memory: 88 MB. Current time: 8/20/26, 4:12:03 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,600 MB. GUI used memory: 87 MB. Current time: 8/20/26, 4:42:03 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,600 MB. GUI used memory: 88 MB. Current time: 8/20/26, 5:12:03 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,600 MB. GUI used memory: 87 MB. Current time: 8/20/26, 5:42:03 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,600 MB. GUI used memory: 87 MB. Current time: 8/20/26, 6:12:03 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,600 MB. GUI used memory: 87 MB. Current time: 8/20/26, 6:42:03 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,600 MB. GUI used memory: 88 MB. Current time: 8/20/26, 7:12:03 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,600 MB. GUI used memory: 87 MB. Current time: 8/20/26, 7:42:03 PM CEST
+// TclEventType: HW_TARGET_NEEDS_CLOSE
+// TclEventType: WAVEFORM_UPDATE_TITLE
+// TclEventType: HW_TARGET_CLOSE
+// TclEventType: WAVEFORM_MODEL_EVENT
+// TclEventType: WAVEFORM_CLOSE_WCFG
+// TclEventType: HW_OBJECT_DELETE
+// Elapsed time: 16643 seconds
+closeView(PAResourceOtoP.PAViews_DASHBOARD, "hw_ila_1"); // i
+closeView(PAResourceOtoP.PAViews_DASHBOARD, "hw_vios"); // i
+// TclEventType: HW_SYSMON_DELETE
+// TclEventType: HW_TARGET_UPDATE
+// TclEventType: DEBUG_PROBE_DELETE
+// TclEventType: DEBUG_PROBE_SET_CHANGE
+// Tcl Message: ERROR: [Labtoolstcl 44-513] HW Target shutdown. Closing target: localhost:3121/xilinx_tcf/Digilent/200300A8C5BBB 
+// TclEventType: HW_SERVER_UPDATE
+// HMemoryUtils.trashcanNow. Engine heap size: 3,593 MB. GUI used memory: 77 MB. Current time: 8/20/26, 8:12:03 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,593 MB. GUI used memory: 75 MB. Current time: 8/20/26, 8:42:03 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,593 MB. GUI used memory: 77 MB. Current time: 8/20/26, 9:12:04 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,593 MB. GUI used memory: 76 MB. Current time: 8/20/26, 9:42:03 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,593 MB. GUI used memory: 76 MB. Current time: 8/20/26, 10:12:03 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,593 MB. GUI used memory: 76 MB. Current time: 8/20/26, 10:42:03 PM CEST
+// Elapsed time: 10667 seconds
+selectButton(PAResourceAtoD.CmdMsgDialog_OK, "OK"); // f
+dismissDialog("Close Hardware Target"); // n
+// TclEventType: HW_TARGET_NEEDS_CLOSE
+// TclEventType: HW_SERVER_UPDATE
+// TclEventType: HW_TARGET_NEEDS_CLOSE
+// TclEventType: HW_TARGET_CHANGE
+// TclEventType: HW_TARGET_CLOSE
+// TclEventType: HW_DEVICE_CHANGE
+// TclEventType: HW_TARGET_NEEDS_CLOSE
+// TclEventType: HW_SYSMON_ADD
+// TclEventType: HW_TARGET_UPDATE
+// TclEventType: HW_DEVICE_CHANGE
+// TclEventType: HW_SYSMON_CHANGE
+// TclEventType: HW_DEVICE_UPDATE
+// TclEventType: HW_DEVICE_CHANGE
+// TclEventType: HW_TARGET_NEEDS_CLOSE
+// TclEventType: HW_SERVER_UPDATE
+// Elapsed time: 173 seconds
+selectTreeTable(PAResourceEtoH.HardwareTreePanel_HARDWARE_TREE_TABLE, "xc7k325t_0 (1) ; Not programmed", 2, "xc7k325t_0 (1)", 0, true); // t - Node
+selectTreeTable(PAResourceEtoH.HardwareTreePanel_HARDWARE_TREE_TABLE, "xc7k325t_0 (1) ; Not programmed", 2, "xc7k325t_0 (1)", 0, true, false, false, false, true, false); // t - Popup Trigger - Node
+selectMenuItem(PAResourceCommand.PACommandNames_PROGRAM_FPGA, "Program Device..."); // ar
+// Run Command: PAResourceCommand.PACommandNames_PROGRAM_FPGA
+selectButton(PAResourceOtoP.ProgramFpgaDialog_PROGRAM, "Program"); // a
+dismissDialog("Program Device"); // bC
+// TclEventType: HW_DEVICE_CHANGE
+// Tcl Message: set_property PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0] 
+// Tcl Message: set_property FULL_PROBES.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.ltx} [get_hw_devices xc7k325t_0] 
+// TclEventType: HW_DEVICE_CHANGE
+// Tcl Message: set_property PROGRAM.FILE {/scratch/mwessner/croc-4-ultrasound/xilinx/out/croc.genesys2.bit} [get_hw_devices xc7k325t_0] 
+// Tcl Message: program_hw_devices [get_hw_devices xc7k325t_0] 
+// TclEventType: HW_TARGET_NEEDS_CLOSE
+// TclEventType: HW_DEVICE_CHANGE
+// Tcl Message: INFO: [Labtools 27-3164] End of startup status: HIGH 
+// Tcl Message: program_hw_devices: Time (s): cpu = 00:00:06 ; elapsed = 00:00:07 . Memory (MB): peak = 9443.969 ; gain = 0.000 ; free physical = 55439 ; free virtual = 114569 
+// TclEventType: HW_DEVICE_CHANGE
+// TclEventType: HW_SYSMON_CHANGE
+// TclEventType: HW_VIO_CHANGE
+// TclEventType: HW_ILA_CHANGE
+// TclEventType: HW_DEVICE_UPDATE
+// TclEventType: HW_DEVICE_CHANGE
+// Tcl Message: refresh_hw_device [lindex [get_hw_devices xc7k325t_0] 0] 
+// Tcl Message: INFO: [Labtools 27-2302] Device xc7k325t (JTAG device index = 0) is programmed with a design that has 1 ILA core(s). INFO: [Labtools 27-2302] Device xc7k325t (JTAG device index = 0) is programmed with a design that has 1 VIO core(s). 
+// TclEventType: HW_DEVICE_CHANGE
+// TclEventType: HW_DEVICE_PROBES_CHANGE
+// TclEventType: DEBUG_PROBE_SET_CHANGE
+// TclEventType: DEBUG_PROBE_CHANGE
+// TclEventType: HW_DEVICE_PROBES_CHANGE
+// TclEventType: HW_VIO_CHANGE
+// TclEventType: HW_ILA_CHANGE
+// TclEventType: HW_VIO_PROBE_VALUE_CHANGE
+// TclEventType: HW_ILA_CHANGE
+// TclEventType: HW_VIO_PROBE_VALUE_CHANGE
+// TclEventType: HW_ILA_CHANGE
+// TclEventType: WAVEFORM_UPDATE_TITLE
+// TclEventType: WAVEFORM_OPEN_WCFG
+// TclEventType: WAVEFORM_UPDATE_TITLE
+// TclEventType: WAVEFORM_UPDATE_WAVEFORM
+// TclEventType: WAVEFORM_UPDATE_TITLE
+// Tcl Message: display_hw_ila_data [ get_hw_ila_data hw_ila_data_1 -of_objects [get_hw_ilas -of_objects [get_hw_devices xc7k325t_0] -filter {CELL_NAME=~"i_ila"}]] 
+// 'I' command handler elapsed time: 9 seconds
+dismissDialog("Program Device"); // bA
+// TclEventType: WAVEFORM_UPDATE_WAVEFORM
+// TclEventType: HW_SERVER_UPDATE
+// HMemoryUtils.trashcanNow. Engine heap size: 3,618 MB. GUI used memory: 90 MB. Current time: 8/20/26, 10:50:15 PM CEST
+// TclEventType: HW_SERVER_UPDATE
+// HMemoryUtils.trashcanNow. Engine heap size: 3,618 MB. GUI used memory: 97 MB. Current time: 8/20/26, 10:50:15 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,618 MB. GUI used memory: 89 MB. Current time: 8/20/26, 11:20:19 PM CEST
+// TclEventType: HW_TARGET_NEEDS_CLOSE
+// TclEventType: HW_TARGET_CLOSE
+// TclEventType: WAVEFORM_DELAYED_MODEL_EVENT
+// TclEventType: WAVEFORM_MODEL_EVENT
+// TclEventType: WAVEFORM_CLOSE_WCFG
+// TclEventType: HW_OBJECT_DELETE
+// Elapsed time: 2829 seconds
+closeView(PAResourceOtoP.PAViews_DASHBOARD, "hw_ila_1"); // i
+closeView(PAResourceOtoP.PAViews_DASHBOARD, "hw_vios"); // i
+// TclEventType: HW_SYSMON_DELETE
+// TclEventType: HW_TARGET_UPDATE
+// TclEventType: DEBUG_PROBE_DELETE
+// TclEventType: DEBUG_PROBE_SET_CHANGE
+// TclEventType: HW_TARGET_NEEDS_CLOSE
+// Tcl Message: ERROR: [Xicom 50-38] xicom: Unable to connect to debug core(s) on the target device. Check cable connectivity and that the target board is powered up then use the disconnect_hw_server and connect_hw_server to re-initialize the hardware target. Use open_hw_target to re-register the hardware device. ERROR: [Labtoolstcl 44-513] HW Target shutdown. Closing target: localhost:3121/xilinx_tcf/Digilent/200300A8C5BBB 
+// TclEventType: HW_TARGET_NEEDS_CLOSE
+// TclEventType: HW_SERVER_UPDATE
+// HMemoryUtils.trashcanNow. Engine heap size: 3,600 MB. GUI used memory: 78 MB. Current time: 8/20/26, 11:50:19 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,600 MB. GUI used memory: 77 MB. Current time: 8/21/26, 12:20:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 12:50:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 1:20:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 1:50:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 2:20:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 2:50:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 3:20:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 3:50:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 4:20:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 4:50:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 5:20:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 5:50:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 6:20:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 6:50:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 7:20:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 76 MB. Current time: 8/21/26, 7:50:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 8:20:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 8:50:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 76 MB. Current time: 8/21/26, 9:20:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 9:50:20 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 10:20:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 10:50:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 76 MB. Current time: 8/21/26, 11:20:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 11:50:19 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 12:20:19 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 12:50:19 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 1:20:19 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 1:50:19 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 2:20:19 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 2:50:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 3:20:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 3:50:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 4:20:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 4:50:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 5:20:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 76 MB. Current time: 8/21/26, 5:50:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 6:20:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 6:50:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 7:20:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 7:50:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 8:20:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 8:50:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 9:20:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 76 MB. Current time: 8/21/26, 9:50:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 10:20:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 10:50:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 11:20:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/21/26, 11:50:20 PM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 12:20:20 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 12:50:20 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 1:20:20 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 1:50:20 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 2:20:20 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 76 MB. Current time: 8/22/26, 2:50:20 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 76 MB. Current time: 8/22/26, 3:20:20 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 3:50:21 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 4:20:20 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 76 MB. Current time: 8/22/26, 4:50:21 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 5:20:21 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 76 MB. Current time: 8/22/26, 5:50:21 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 6:20:21 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 6:50:21 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 7:20:21 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 7:50:21 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 8:20:21 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 8:50:21 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 9:20:21 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 9:50:21 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 10:20:21 AM CEST
+// HMemoryUtils.trashcanNow. Engine heap size: 3,601 MB. GUI used memory: 77 MB. Current time: 8/22/26, 10:50:21 AM CEST
